@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Treze Alcove - Loan Servicing Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #1a1d2e 0%, #252940 100%); padding: 20px 30px; border-bottom: 2px solid #c9952b; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 22px; font-weight: 600; color: #fff; }
+.header h1 span { color: #c9952b; }
+.header .subtitle { font-size: 13px; color: #8890a4; margin-top: 2px; }
+.header .date { font-size: 13px; color: #8890a4; }
+
+/* Tabs */
+.tabs { display: flex; background: #181b28; border-bottom: 1px solid #2a2d3e; padding: 0 20px; }
+.tab { padding: 12px 24px; cursor: pointer; font-size: 13px; font-weight: 500; color: #8890a4; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab:hover { color: #c9952b; }
+.tab.active { color: #c9952b; border-bottom-color: #c9952b; }
+.tab .badge { background: #e74c3c; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+
+/* Content */
+.content { padding: 20px 30px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* KPI Cards */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
+.kpi { background: #1a1d2e; border-radius: 8px; padding: 18px; border: 1px solid #2a2d3e; }
+.kpi .label { font-size: 11px; text-transform: uppercase; color: #8890a4; letter-spacing: 0.5px; margin-bottom: 6px; }
+.kpi .value { font-size: 24px; font-weight: 700; color: #fff; }
+.kpi .value.green { color: #2ecc71; }
+.kpi .value.yellow { color: #f1c40f; }
+.kpi .value.orange { color: #e67e22; }
+.kpi .value.red { color: #e74c3c; }
+.kpi .sub { font-size: 11px; color: #8890a4; margin-top: 4px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #1a1d2e; color: #8890a4; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; padding: 10px 12px; text-align: left; border-bottom: 1px solid #2a2d3e; cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 1; }
+thead th:hover { color: #c9952b; }
+thead th .sort-arrow { margin-left: 4px; font-size: 9px; }
+tbody tr { border-bottom: 1px solid #1e2130; transition: background 0.15s; }
+tbody tr:hover { background: #1e2235; }
+tbody td { padding: 10px 12px; }
+tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Status badges */
+.status { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.status.current { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.status.past-due { background: rgba(241,196,15,0.15); color: #f1c40f; }
+.status.late-notice { background: rgba(230,126,34,0.15); color: #e67e22; }
+.status.demand-letter { background: rgba(231,76,60,0.15); color: #e74c3c; }
+.status.severely-delinquent { background: rgba(231,76,60,0.25); color: #ff6b6b; }
+
+/* Charts */
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+.chart-card { background: #1a1d2e; border-radius: 8px; padding: 20px; border: 1px solid #2a2d3e; }
+.chart-card h3 { font-size: 14px; color: #fff; margin-bottom: 15px; font-weight: 600; }
+.chart-wrap { position: relative; height: 280px; }
+
+/* Filter bar */
+.filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+.filter-bar select, .filter-bar input { background: #1a1d2e; color: #e0e0e0; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+.filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: #c9952b; }
+.filter-bar label { font-size: 12px; color: #8890a4; }
+
+/* Detail modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: #1a1d2e; border-radius: 10px; border: 1px solid #2a2d3e; width: 90%; max-width: 900px; max-height: 85vh; overflow-y: auto; padding: 25px; }
+.modal h2 { font-size: 18px; color: #fff; margin-bottom: 5px; }
+.modal .modal-sub { font-size: 13px; color: #8890a4; margin-bottom: 20px; }
+.modal .close-btn { position: absolute; top: 15px; right: 20px; color: #8890a4; cursor: pointer; font-size: 20px; }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; position: relative; }
+.modal .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.modal .detail-item { }
+.modal .detail-item .dl { font-size: 11px; color: #8890a4; text-transform: uppercase; }
+.modal .detail-item .dv { font-size: 15px; font-weight: 600; color: #fff; margin-top: 2px; }
+
+/* Insurance section */
+.ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.ins-card { background: #1a1d2e; border-radius: 8px; padding: 15px; border: 1px solid #2a2d3e; }
+.ins-card .ins-addr { font-weight: 600; color: #fff; font-size: 14px; }
+.ins-card .ins-borrower { font-size: 12px; color: #8890a4; margin-top: 2px; }
+.ins-card .ins-status { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+.ins-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ins-dot.valid { background: #2ecc71; }
+.ins-dot.expiring { background: #f1c40f; }
+.ins-dot.lapsed { background: #e74c3c; }
+.ins-dot.unknown { background: #555; }
+.ins-card .ins-label { font-size: 12px; }
+
+/* Scrollable table wrapper */
+.table-wrap { max-height: 600px; overflow-y: auto; border-radius: 8px; border: 1px solid #2a2d3e; }
+.table-wrap::-webkit-scrollbar { width: 6px; }
+.table-wrap::-webkit-scrollbar-track { background: #1a1d2e; }
+.table-wrap::-webkit-scrollbar-thumb { background: #3a3d4e; border-radius: 3px; }
+
+/* Collections queue highlight */
+tr.action-needed { background: rgba(231,76,60,0.05); }
+
+/* Balloon warning */
+.balloon-warn { color: #e67e22; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .chart-row { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .modal .detail-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Treze Alcove <span>Loan Servicing</span></h1>
+    <div class="subtitle">Preze Enterprises -- Notes Receivable Portfolio</div>
+  </div>
+  <div class="date">As of March 30, 2026</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="payments">Payment Status</div>
+  <div class="tab" data-tab="collections">Collections<span class="badge" id="collectBadge">0</span></div>
+  <div class="tab" data-tab="insurance">Insurance</div>
+  <div class="tab" data-tab="cashflow">Cash Flow</div>
+</div>
+
+<div class="content">
+
+  <!-- OVERVIEW TAB -->
+  <div class="tab-content active" id="tab-overview">
+    <div class="kpi-row" id="kpiRow"></div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h3>Portfolio Status</h3>
+        <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Aging Distribution (Days Past Due)</h3>
+        <div class="chart-wrap"><canvas id="agingChart"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h3>Balance by Closing</h3>
+        <div class="chart-wrap"><canvas id="closingChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Balloon Maturity Timeline</h3>
+        <div class="chart-wrap"><canvas id="balloonChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAYMENT STATUS TAB -->
+  <div class="tab-content" id="tab-payments">
+    <div class="filter-bar">
+      <div>
+        <label>Status</label><br>
+        <select id="filterStatus">
+          <option value="all">All Statuses</option>
+          <option value="Current">Current</option>
+          <option value="Past Due">Past Due</option>
+          <option value="Late Notice">Late Notice</option>
+          <option value="Demand Letter">Demand Letter</option>
+          <option value="Severely Delinquent">Severely Delinquent</option>
+        </select>
+      </div>
+      <div>
+        <label>Closing</label><br>
+        <select id="filterClosing"><option value="all">All Closings</option></select>
+      </div>
+      <div>
+        <label>Search</label><br>
+        <input type="text" id="filterSearch" placeholder="Address or borrower...">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="paymentTable">
+        <thead>
+          <tr>
+            <th data-sort="address">Address <span class="sort-arrow"></span></th>
+            <th data-sort="closing">Closing <span class="sort-arrow"></span></th>
+            <th data-sort="borrower">Borrower <span class="sort-arrow"></span></th>
+            <th data-sort="monthlyPmt">Payment <span class="sort-arrow"></span></th>
+            <th data-sort="lastPmtDate">Last Payment <span class="sort-arrow"></span></th>
+            <th data-sort="nextDueDate">Next Due <span class="sort-arrow"></span></th>
+            <th data-sort="daysPastDue">Days Past Due <span class="sort-arrow"></span></th>
+            <th data-sort="currentBalance">Balance <span class="sort-arrow"></span></th>
+            <th data-sort="status">Status <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="paymentBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- COLLECTIONS TAB -->
+  <div class="tab-content" id="tab-collections">
+    <div class="kpi-row" id="collectKpi"></div>
+    <h3 style="color:#fff; margin-bottom:15px;">Action Items</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Address</th>
+            <th>Borrower</th>
+            <th>Days Past Due</th>
+            <th>Status</th>
+            <th>Action Required</th>
+            <th>Balance</th>
+          </tr>
+        </thead>
+        <tbody id="collectBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- INSURANCE TAB -->
+  <div class="tab-content" id="tab-insurance">
+    <p style="color:#8890a4; margin-bottom:15px; font-size:13px;">Insurance validity tracking for all active notes. Update expiration dates in the build data to reflect current policy status.</p>
+    <div class="kpi-row" id="insKpi"></div>
+    <div class="filter-bar">
+      <div>
+        <label>Status</label><br>
+        <select id="filterInsStatus">
+          <option value="all">All</option>
+          <option value="valid">Valid</option>
+          <option value="expiring">Expiring Soon (30 days)</option>
+          <option value="lapsed">Lapsed</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </div>
+    </div>
+    <div class="ins-grid" id="insGrid"></div>
+  </div>
+
+  <!-- CASH FLOW TAB -->
+  <div class="tab-content" id="tab-cashflow">
+    <div class="kpi-row" id="cfKpi"></div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h3>Expected Monthly Collections</h3>
+        <div class="chart-wrap"><canvas id="cfChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Balloon Payoffs by Year</h3>
+        <div class="chart-wrap"><canvas id="balloonPayoffChart"></canvas></div>
+      </div>
+    </div>
+    <h3 style="color:#fff; margin-bottom:15px;">Upcoming Balloon Maturities</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Address</th>
+            <th>Borrower</th>
+            <th>Balloon Date</th>
+            <th>Months Remaining</th>
+            <th>Est. Balance at Maturity</th>
+            <th>Monthly Payment</th>
+          </tr>
+        </thead>
+        <tbody id="balloonBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="noteModal"></div>
+</div>
+
+<script>
+const NOTES = [{"id":"1416 Kingston (#5)","address":"1416 Kingston","closing":5,"borrower":"Dhyan, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":125402.6,"lastPmtDate":"2026-02-09","lastPmtAmount":812.97,"nextDueDate":"2026-03-01","daysSinceLastPmt":49,"daysPastDue":29,"status":"Late Notice","totalCollected":69,"remainingPayments":54,"payments":[{"month":55,"date":"2025-03-11","payment":812.96,"interest":587.33,"principal":225.63,"balance":127379.14,"collected":true},{"month":56,"date":"2025-04-14","payment":812.99,"interest":711.93,"principal":101.06,"balance":127278.08,"collected":true},{"month":57,"date":"2025-05-12","payment":812.99,"interest":585.83,"principal":227.16,"balance":127050.91,"collected":true},{"month":58,"date":"2025-06-10","payment":812.99,"interest":605.67,"principal":207.32,"balance":126843.59,"collected":true},{"month":59,"date":"2025-07-08","payment":812.99,"interest":583.83,"principal":229.16,"balance":126614.43,"collected":true},{"month":60,"date":"2025-08-11","payment":812.99,"interest":707.65,"principal":105.34,"balance":126509.09,"collected":true},{"month":61,"date":"2025-09-08","payment":812.99,"interest":582.29,"principal":230.7,"balance":126278.39,"collected":true},{"month":62,"date":"2025-10-14","payment":812.97,"interest":747.29,"principal":65.68,"balance":126212.71,"collected":true},{"month":63,"date":"2025-11-12","payment":812.97,"interest":601.67,"principal":211.3,"balance":126001.41,"collected":true},{"month":64,"date":"2025-12-11","payment":812.97,"interest":600.66,"principal":212.31,"balance":125789.11,"collected":true},{"month":65,"date":"2026-01-08","payment":812.97,"interest":578.97,"principal":234,"balance":125555.11,"collected":true},{"month":66,"date":"2026-02-09","payment":812.97,"interest":660.45,"principal":152.52,"balance":125402.6,"collected":true}]},{"id":"1103 Leeds (#14)","address":"1103 Leeds","closing":14,"borrower":"Dhyan LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-09-18","monthlyPmt":812.99,"balloonDate":"2030-09-18","currentBalance":125761.54,"lastPmtDate":"2026-02-09","lastPmtAmount":812.98,"nextDueDate":"2026-03-01","daysSinceLastPmt":49,"daysPastDue":29,"status":"Late Notice","totalCollected":66,"remainingPayments":56,"payments":[{"month":53,"date":"2025-03-11","payment":812.99,"interest":588.89,"principal":224.1,"balance":127718.77,"collected":true},{"month":54,"date":"2025-04-14","payment":812.96,"interest":713.83,"principal":99.13,"balance":127619.64,"collected":true},{"month":55,"date":"2025-05-12","payment":812.96,"interest":587.4,"principal":225.56,"balance":127394.08,"collected":true},{"month":56,"date":"2025-06-10","payment":812.96,"interest":607.3,"principal":205.66,"balance":127188.42,"collected":true},{"month":57,"date":"2025-07-08","payment":812.96,"interest":585.42,"principal":227.54,"balance":126960.87,"collected":true},{"month":58,"date":"2025-08-11","payment":812.96,"interest":709.59,"principal":103.37,"balance":126857.5,"collected":true},{"month":59,"date":"2025-09-08","payment":812.96,"interest":583.89,"principal":229.07,"balance":126628.44,"collected":true},{"month":60,"date":"2025-10-14","payment":812.98,"interest":749.36,"principal":63.62,"balance":126564.82,"collected":true},{"month":61,"date":"2025-11-12","payment":812.98,"interest":603.35,"principal":209.63,"balance":126355.19,"collected":true},{"month":62,"date":"2025-12-11","payment":812.98,"interest":602.35,"principal":210.63,"balance":126144.56,"collected":true},{"month":63,"date":"2026-01-08","payment":812.98,"interest":580.61,"principal":232.37,"balance":125912.19,"collected":true},{"month":64,"date":"2026-02-09","payment":812.98,"interest":662.33,"principal":150.65,"balance":125761.54,"collected":true}]},{"id":"1110 Preston (#1)","address":"1110 Preston","closing":1,"borrower":"Provident Trust Group, LLC FBO: Eliezer Delia Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-05","monthlyPmt":812.99,"balloonDate":"2030-06-05","currentBalance":124843.14,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":70,"remainingPayments":52,"payments":[{"month":57,"date":"2025-04-02","payment":812.99,"interest":605.67,"principal":207.32,"balance":126844.43,"collected":true},{"month":58,"date":"2025-05-02","payment":812.99,"interest":625.53,"principal":187.46,"balance":126656.97,"collected":true},{"month":59,"date":"2025-06-03","payment":812.99,"interest":666.25,"principal":146.74,"balance":126510.23,"collected":true},{"month":60,"date":"2025-07-02","payment":812.99,"interest":603.09,"principal":209.9,"balance":126300.33,"collected":true},{"month":61,"date":"2025-08-04","payment":812.99,"interest":685.14,"principal":127.85,"balance":126172.48,"collected":true},{"month":62,"date":"2025-09-03","payment":812.99,"interest":622.22,"principal":190.77,"balance":125981.71,"collected":true},{"month":63,"date":"2025-10-02","payment":812.99,"interest":600.57,"principal":0,"balance":125981.71,"collected":true},{"month":64,"date":"2025-11-04","payment":812.99,"interest":683.41,"principal":0,"balance":125981.71,"collected":true},{"month":65,"date":"2025-12-11","payment":3694.29,"interest":766.24,"principal":388.75,"balance":125592.96,"collected":true},{"month":66,"date":"2026-01-05","payment":812.99,"interest":516.14,"principal":296.85,"balance":125296.11,"collected":true},{"month":67,"date":"2026-02-03","payment":812.99,"interest":597.3,"principal":215.69,"balance":125080.42,"collected":true},{"month":68,"date":"2026-03-03","payment":812.99,"interest":575.71,"principal":237.28,"balance":124843.14,"collected":true}]},{"id":"1112 Preston (#1)","address":"1112 Preston","closing":1,"borrower":"Equity Trust Company Custodian FBO 200402536 IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-05","monthlyPmt":812.99,"balloonDate":"2030-06-05","currentBalance":123804.83,"lastPmtDate":"2026-03-09","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":21,"daysPastDue":0,"status":"Current","totalCollected":70,"remainingPayments":52,"payments":[{"month":57,"date":"2025-04-07","payment":812.99,"interest":642.16,"principal":170.83,"balance":125844.91,"collected":true},{"month":58,"date":"2025-05-06","payment":812.99,"interest":599.92,"principal":213.07,"balance":125631.84,"collected":true},{"month":59,"date":"2025-06-09","payment":812.99,"interest":702.16,"principal":110.83,"balance":125521.01,"collected":true},{"month":60,"date":"2025-07-11","payment":812.99,"interest":660.27,"principal":152.72,"balance":125368.3,"collected":true},{"month":61,"date":"2025-08-11","payment":812.99,"interest":638.86,"principal":174.13,"balance":125194.17,"collected":true},{"month":62,"date":"2025-09-09","payment":812.99,"interest":596.82,"principal":216.17,"balance":124978,"collected":true},{"month":63,"date":"2025-10-09","payment":812.99,"interest":616.33,"principal":196.66,"balance":124781.34,"collected":true},{"month":64,"date":"2025-11-10","payment":812.99,"interest":656.38,"principal":156.61,"balance":124624.73,"collected":true},{"month":65,"date":"2025-12-09","payment":812.99,"interest":594.1,"principal":218.89,"balance":124405.84,"collected":true},{"month":66,"date":"2026-01-09","payment":812.99,"interest":633.96,"principal":179.03,"balance":124226.81,"collected":true},{"month":67,"date":"2026-02-09","payment":812.99,"interest":633.05,"principal":179.94,"balance":124046.87,"collected":true},{"month":68,"date":"2026-03-09","payment":812.99,"interest":570.96,"principal":242.03,"balance":123804.83,"collected":true}]},{"id":"1104 Preston (#2)","address":"1104 Preston","closing":2,"borrower":"TexasRealEstate LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-12","monthlyPmt":812.99,"balloonDate":"2030-06-12","currentBalance":124655.77,"lastPmtDate":"2026-02-23","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":35,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":52,"payments":[{"month":57,"date":"2025-03-31","payment":812.99,"interest":709.22,"principal":103.77,"balance":126791.24,"collected":true},{"month":58,"date":"2025-04-29","payment":812.99,"interest":604.43,"principal":208.56,"balance":126582.68,"collected":true},{"month":59,"date":"2025-05-27","payment":812.99,"interest":582.63,"principal":230.36,"balance":126352.32,"collected":true},{"month":60,"date":"2025-06-30","payment":812.99,"interest":706.19,"principal":106.8,"balance":126245.52,"collected":true},{"month":61,"date":"2025-08-01","payment":812.99,"interest":664.09,"principal":148.9,"balance":126096.62,"collected":true},{"month":62,"date":"2025-08-26","payment":812.99,"interest":518.21,"principal":294.78,"balance":125801.83,"collected":true},{"month":63,"date":"2025-09-30","payment":812.99,"interest":723.79,"principal":89.2,"balance":125712.63,"collected":true},{"month":64,"date":"2025-10-28","payment":812.99,"interest":578.62,"principal":234.37,"balance":125478.27,"collected":true},{"month":65,"date":"2025-11-25","payment":812.99,"interest":577.54,"principal":235.45,"balance":125242.82,"collected":true},{"month":66,"date":"2025-12-30","payment":812.99,"interest":720.58,"principal":92.41,"balance":125150.4,"collected":true},{"month":67,"date":"2026-02-05","payment":812.99,"interest":761.19,"principal":51.8,"balance":125098.6,"collected":true},{"month":68,"date":"2026-02-23","payment":812.99,"interest":370.15,"principal":442.84,"balance":124655.77,"collected":true}]},{"id":"1106 Preston (#2)","address":"1106 Preston","closing":2,"borrower":"Auburn Invest, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-12","monthlyPmt":812.99,"balloonDate":"2030-06-12","currentBalance":124736.98,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":52,"payments":[{"month":57,"date":"2025-03-31","payment":812.99,"interest":646.95,"principal":166.04,"balance":126789.02,"collected":true},{"month":58,"date":"2025-04-30","payment":812.99,"interest":625.26,"principal":187.73,"balance":126601.29,"collected":true},{"month":59,"date":"2025-05-30","payment":812.99,"interest":624.34,"principal":188.65,"balance":126412.63,"collected":true},{"month":60,"date":"2025-06-30","payment":812.99,"interest":644.18,"principal":168.81,"balance":126243.83,"collected":true},{"month":61,"date":"2025-07-31","payment":812.99,"interest":643.32,"principal":169.67,"balance":126074.16,"collected":true},{"month":62,"date":"2025-08-29","payment":812.99,"interest":601.01,"principal":211.98,"balance":125862.18,"collected":true},{"month":63,"date":"2025-09-30","payment":812.99,"interest":662.07,"principal":150.92,"balance":125711.26,"collected":true},{"month":64,"date":"2025-10-31","payment":812.99,"interest":640.61,"principal":172.38,"balance":125538.88,"collected":true},{"month":65,"date":"2025-11-28","payment":812.99,"interest":577.82,"principal":235.17,"balance":125303.72,"collected":true},{"month":66,"date":"2025-12-31","payment":812.99,"interest":679.73,"principal":133.26,"balance":125170.46,"collected":true},{"month":67,"date":"2026-01-30","payment":812.99,"interest":617.28,"principal":195.71,"balance":124974.75,"collected":true},{"month":68,"date":"2026-02-27","payment":812.99,"interest":575.23,"principal":237.76,"balance":124736.98,"collected":true}]},{"id":"1108 Preston (#2)","address":"1108 Preston","closing":2,"borrower":"Provident Trust Group, LLC FBO: Erik Gehman Roth IRA (29%), FBO Kimberly Gehman Roth IRA (71%)","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-12","monthlyPmt":812.99,"balloonDate":"2030-06-12","currentBalance":124837,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":71,"remainingPayments":52,"payments":[{"month":57,"date":"2025-04-02","payment":812.99,"interest":605.66,"principal":207.33,"balance":126842.78,"collected":true},{"month":58,"date":"2025-05-02","payment":812.99,"interest":625.53,"principal":187.46,"balance":126655.32,"collected":true},{"month":59,"date":"2025-06-03","payment":812.99,"interest":666.24,"principal":146.75,"balance":126508.57,"collected":true},{"month":60,"date":"2025-07-02","payment":812.99,"interest":603.08,"principal":209.91,"balance":126298.66,"collected":true},{"month":61,"date":"2025-08-04","payment":812.99,"interest":685.13,"principal":127.86,"balance":126170.8,"collected":true},{"month":62,"date":"2025-09-03","payment":812.99,"interest":622.21,"principal":190.78,"balance":125980.02,"collected":true},{"month":63,"date":"2025-10-02","payment":812.99,"interest":600.56,"principal":212.43,"balance":125767.59,"collected":true},{"month":64,"date":"2025-11-04","payment":812.99,"interest":682.25,"principal":130.74,"balance":125636.85,"collected":true},{"month":65,"date":"2025-12-02","payment":812.99,"interest":578.27,"principal":234.72,"balance":125402.13,"collected":true},{"month":66,"date":"2026-01-05","payment":812.99,"interest":700.88,"principal":112.11,"balance":125290.02,"collected":true},{"month":67,"date":"2026-02-03","payment":812.99,"interest":597.27,"principal":215.72,"balance":125074.3,"collected":true},{"month":68,"date":"2026-03-03","payment":812.99,"interest":575.68,"principal":237.31,"balance":124837,"collected":true}]},{"id":"1424 Kingston (#3)","address":"1424 Kingston","closing":3,"borrower":"Gillespie Acquisitions LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-19","monthlyPmt":812.99,"balloonDate":"2030-06-19","currentBalance":124735.17,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":52,"payments":[{"month":57,"date":"2025-03-31","payment":812.99,"interest":646.94,"principal":166.05,"balance":126787.3,"collected":true},{"month":58,"date":"2025-04-30","payment":812.99,"interest":625.25,"principal":187.74,"balance":126599.57,"collected":true},{"month":59,"date":"2025-05-30","payment":812.99,"interest":624.33,"principal":188.66,"balance":126410.9,"collected":true},{"month":60,"date":"2025-06-30","payment":812.99,"interest":644.18,"principal":168.81,"balance":126242.09,"collected":true},{"month":61,"date":"2025-07-31","payment":812.99,"interest":643.32,"principal":169.67,"balance":126072.42,"collected":true},{"month":62,"date":"2025-08-29","payment":812.99,"interest":601,"principal":211.99,"balance":125860.43,"collected":true},{"month":63,"date":"2025-09-30","payment":812.99,"interest":662.06,"principal":150.93,"balance":125709.5,"collected":true},{"month":64,"date":"2025-10-31","payment":812.99,"interest":640.6,"principal":172.39,"balance":125537.11,"collected":true},{"month":65,"date":"2025-11-28","payment":812.99,"interest":577.81,"principal":235.18,"balance":125301.93,"collected":true},{"month":66,"date":"2025-12-31","payment":812.99,"interest":679.72,"principal":133.27,"balance":125168.66,"collected":true},{"month":67,"date":"2026-01-30","payment":812.99,"interest":617.27,"principal":195.72,"balance":124972.94,"collected":true},{"month":68,"date":"2026-02-27","payment":812.99,"interest":575.22,"principal":237.77,"balance":124735.17,"collected":true}]},{"id":"1012 Preston (#4)","address":"1012 Preston","closing":4,"borrower":"Provident Trust Group, LLC FBO: Craig DeSpain Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-26","monthlyPmt":812.99,"balloonDate":"2030-06-26","currentBalance":124833.88,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":52,"payments":[{"month":57,"date":"2025-04-02","payment":812.99,"interest":605.65,"principal":207.34,"balance":126839.83,"collected":true},{"month":58,"date":"2025-05-02","payment":812.99,"interest":625.51,"principal":187.48,"balance":126652.35,"collected":true},{"month":59,"date":"2025-06-03","payment":812.99,"interest":666.23,"principal":146.76,"balance":126505.59,"collected":true},{"month":60,"date":"2025-07-02","payment":812.99,"interest":603.07,"principal":209.92,"balance":126295.67,"collected":true},{"month":61,"date":"2025-08-04","payment":812.99,"interest":685.11,"principal":127.88,"balance":126167.79,"collected":true},{"month":62,"date":"2025-09-03","payment":812.99,"interest":622.2,"principal":190.79,"balance":125977,"collected":true},{"month":63,"date":"2025-10-02","payment":812.99,"interest":600.55,"principal":212.44,"balance":125764.55,"collected":true},{"month":64,"date":"2025-11-04","payment":812.99,"interest":682.23,"principal":130.76,"balance":125633.79,"collected":true},{"month":65,"date":"2025-12-02","payment":812.99,"interest":578.26,"principal":234.73,"balance":125399.06,"collected":true},{"month":66,"date":"2026-01-05","payment":812.99,"interest":700.86,"principal":112.13,"balance":125286.93,"collected":true},{"month":67,"date":"2026-02-03","payment":812.99,"interest":597.26,"principal":215.73,"balance":125071.2,"collected":true},{"month":68,"date":"2026-03-03","payment":812.99,"interest":575.67,"principal":237.32,"balance":124833.88,"collected":true}]},{"id":"1014 Preston (#4)","address":"1014 Preston","closing":4,"borrower":"Provident Trust Group, LLC FBO: Craig DeSpain Traditional IRA (50%), Sharon L. DeSpain Traditional IRA (50%)","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-06-26","monthlyPmt":812.99,"balloonDate":"2030-06-26","currentBalance":124834.89,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":70,"remainingPayments":52,"payments":[{"month":57,"date":"2025-04-02","payment":812.99,"interest":605.65,"principal":207.34,"balance":126840.79,"collected":true},{"month":58,"date":"2025-05-02","payment":812.99,"interest":625.52,"principal":187.47,"balance":126653.31,"collected":true},{"month":59,"date":"2025-06-03","payment":812.99,"interest":666.23,"principal":146.76,"balance":126506.55,"collected":true},{"month":60,"date":"2025-07-02","payment":812.99,"interest":603.07,"principal":209.92,"balance":126296.64,"collected":true},{"month":61,"date":"2025-08-04","payment":812.99,"interest":685.12,"principal":127.87,"balance":126168.76,"collected":true},{"month":62,"date":"2025-09-03","payment":812.99,"interest":622.2,"principal":190.79,"balance":125977.97,"collected":true},{"month":63,"date":"2025-10-02","payment":812.99,"interest":600.55,"principal":212.44,"balance":125765.54,"collected":true},{"month":64,"date":"2025-11-04","payment":812.99,"interest":682.23,"principal":130.76,"balance":125634.78,"collected":true},{"month":65,"date":"2025-12-02","payment":812.99,"interest":578.26,"principal":234.73,"balance":125400.06,"collected":true},{"month":66,"date":"2026-01-05","payment":812.99,"interest":700.87,"principal":112.12,"balance":125287.93,"collected":true},{"month":67,"date":"2026-02-03","payment":812.99,"interest":597.26,"principal":215.73,"balance":125072.2,"collected":true},{"month":68,"date":"2026-03-03","payment":812.99,"interest":575.67,"principal":237.32,"balance":124834.89,"collected":true}]},{"id":"712 Hillshire (#5)","address":"712 Hillshire","closing":5,"borrower":"Tate USA, Inc","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":123963.81,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":53,"payments":[{"month":56,"date":"2025-04-03","payment":812.09,"interest":911.45,"principal":0,"balance":126014.36,"collected":true},{"month":57,"date":"2025-05-08","payment":812.09,"interest":725.01,"principal":0,"balance":126014.36,"collected":true},{"month":58,"date":"2025-06-02","payment":812.99,"interest":517.87,"principal":282.84,"balance":125731.52,"collected":true},{"month":59,"date":"2025-07-01","payment":812.09,"interest":599.38,"principal":212.71,"balance":125518.8,"collected":true},{"month":60,"date":"2025-08-04","payment":812.09,"interest":701.53,"principal":110.56,"balance":125408.24,"collected":true},{"month":61,"date":"2025-08-25","payment":812.09,"interest":432.92,"principal":379.17,"balance":125029.07,"collected":true},{"month":62,"date":"2025-09-30","payment":812.09,"interest":739.9,"principal":72.19,"balance":124956.88,"collected":true},{"month":63,"date":"2025-10-31","payment":812.99,"interest":636.77,"principal":176.22,"balance":124780.65,"collected":true},{"month":64,"date":"2025-11-28","payment":812.99,"interest":574.33,"principal":238.66,"balance":124542,"collected":true},{"month":65,"date":"2025-12-31","payment":812.99,"interest":675.6,"principal":137.39,"balance":124404.6,"collected":true},{"month":66,"date":"2026-01-30","payment":812.99,"interest":613.5,"principal":199.49,"balance":124205.12,"collected":true},{"month":67,"date":"2026-02-27","payment":812.99,"interest":571.68,"principal":241.31,"balance":123963.81,"collected":true}]},{"id":"718 Hillshire (#5)","address":"718 Hillshire","closing":5,"borrower":"Provident Turst Group LLC FBO Lisa Murray IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":124992.93,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":53,"payments":[{"month":56,"date":"2025-04-02","payment":812.99,"interest":606.36,"principal":206.63,"balance":126990.38,"collected":true},{"month":57,"date":"2025-05-02","payment":812.99,"interest":626.25,"principal":186.74,"balance":126803.65,"collected":true},{"month":58,"date":"2025-06-03","payment":812.99,"interest":667.02,"principal":145.97,"balance":126657.68,"collected":true},{"month":59,"date":"2025-07-02","payment":812.99,"interest":603.79,"principal":209.2,"balance":126448.48,"collected":true},{"month":60,"date":"2025-08-04","payment":812.99,"interest":685.94,"principal":127.05,"balance":126321.43,"collected":true},{"month":61,"date":"2025-09-03","payment":812.99,"interest":622.96,"principal":190.03,"balance":126131.4,"collected":true},{"month":62,"date":"2025-10-02","payment":812.99,"interest":601.28,"principal":211.71,"balance":125919.69,"collected":true},{"month":63,"date":"2025-11-04","payment":812.99,"interest":683.07,"principal":129.92,"balance":125789.77,"collected":true},{"month":64,"date":"2025-12-02","payment":812.99,"interest":578.98,"principal":234.01,"balance":125555.76,"collected":true},{"month":65,"date":"2026-01-05","payment":812.99,"interest":701.74,"principal":111.25,"balance":125444.51,"collected":true},{"month":66,"date":"2026-02-03","payment":812.99,"interest":598.01,"principal":214.98,"balance":125229.52,"collected":true},{"month":67,"date":"2026-03-03","payment":812.99,"interest":576.4,"principal":236.59,"balance":124992.93,"collected":true}]},{"id":"720 Hillshire (#5)","address":"720 Hillshire","closing":5,"borrower":"Grodt, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":124204.45,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":53,"payments":[{"month":56,"date":"2025-03-31","payment":812.99,"interest":644.39,"principal":168.6,"balance":126284.78,"collected":true},{"month":57,"date":"2025-04-30","payment":812.99,"interest":622.77,"principal":190.22,"balance":126094.57,"collected":true},{"month":58,"date":"2025-05-30","payment":812.99,"interest":621.84,"principal":191.15,"balance":125903.41,"collected":true},{"month":59,"date":"2025-06-30","payment":812.99,"interest":641.59,"principal":171.4,"balance":125732.01,"collected":true},{"month":60,"date":"2025-07-31","payment":812.99,"interest":640.72,"principal":172.27,"balance":125559.74,"collected":true},{"month":61,"date":"2025-08-29","payment":812.99,"interest":598.56,"principal":214.43,"balance":125345.31,"collected":true},{"month":62,"date":"2025-09-30","payment":812.99,"interest":659.35,"principal":153.64,"balance":125191.67,"collected":true},{"month":63,"date":"2025-10-31","payment":812.99,"interest":637.96,"principal":175.03,"balance":125016.64,"collected":true},{"month":64,"date":"2025-11-28","payment":812.99,"interest":575.42,"principal":237.57,"balance":124779.07,"collected":true},{"month":65,"date":"2025-12-31","payment":812.99,"interest":676.88,"principal":136.11,"balance":124642.97,"collected":true},{"month":66,"date":"2026-01-30","payment":812.99,"interest":614.68,"principal":198.31,"balance":124444.65,"collected":true},{"month":67,"date":"2026-02-27","payment":812.99,"interest":572.79,"principal":240.2,"balance":124204.45,"collected":true}]},{"id":"901 Manchester (#5)","address":"901 Manchester","closing":5,"borrower":"Provident Trust Group, LLC FBO: Paul Saenz Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":124320.29,"lastPmtDate":"2026-03-13","lastPmtAmount":812.99,"nextDueDate":"2026-05-01","daysSinceLastPmt":17,"daysPastDue":0,"status":"Current","totalCollected":71,"remainingPayments":52,"payments":[{"month":58,"date":"2025-05-15","payment":812.99,"interest":602.72,"principal":210.27,"balance":126223.29,"collected":true},{"month":59,"date":"2025-06-12","payment":812.99,"interest":580.97,"principal":232.02,"balance":125991.27,"collected":true},{"month":60,"date":"2025-07-15","payment":812.99,"interest":683.46,"principal":129.53,"balance":125861.74,"collected":true},{"month":61,"date":"2025-08-15","payment":812.99,"interest":641.38,"principal":171.61,"balance":125690.13,"collected":true},{"month":62,"date":"2025-09-15","payment":812.99,"interest":640.5,"principal":0,"balance":125690.13,"collected":true},{"month":null,"date":"2025-09-30","payment":500,"interest":309.92,"principal":0,"balance":125690.13,"collected":true},{"month":63,"date":"2025-10-16","payment":812.99,"interest":330.58,"principal":344.97,"balance":125345.16,"collected":true},{"month":64,"date":"2025-11-14","payment":812.99,"interest":597.54,"principal":215.45,"balance":125129.7,"collected":true},{"month":65,"date":"2025-12-15","payment":812.99,"interest":637.65,"principal":175.34,"balance":124954.36,"collected":true},{"month":66,"date":"2026-01-15","payment":812.99,"interest":636.75,"principal":176.24,"balance":124778.12,"collected":true},{"month":67,"date":"2026-02-13","payment":812.99,"interest":594.83,"principal":218.16,"balance":124559.97,"collected":true},{"month":68,"date":"2026-03-13","payment":812.99,"interest":573.32,"principal":239.67,"balance":124320.29,"collected":true}]},{"id":"903 Manchester (#5)","address":"903 Manchester","closing":5,"borrower":"Provident Trust Group, LLC FBO: Paul Saenz Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":124318.22,"lastPmtDate":"2026-03-13","lastPmtAmount":812.99,"nextDueDate":"2026-05-01","daysSinceLastPmt":17,"daysPastDue":0,"status":"Current","totalCollected":71,"remainingPayments":52,"payments":[{"month":58,"date":"2025-05-15","payment":812.99,"interest":602.72,"principal":210.27,"balance":126221.32,"collected":true},{"month":59,"date":"2025-06-12","payment":812.99,"interest":580.96,"principal":232.03,"balance":125989.29,"collected":true},{"month":60,"date":"2025-07-15","payment":812.99,"interest":683.45,"principal":129.54,"balance":125859.75,"collected":true},{"month":61,"date":"2025-08-15","payment":812.99,"interest":641.37,"principal":171.62,"balance":125688.13,"collected":true},{"month":62,"date":"2025-09-15","payment":812.99,"interest":640.49,"principal":0,"balance":125688.13,"collected":true},{"month":null,"date":"2025-09-30","payment":500,"interest":309.92,"principal":0,"balance":125688.13,"collected":true},{"month":63,"date":"2025-10-16","payment":812.99,"interest":330.58,"principal":344.99,"balance":125343.14,"collected":true},{"month":64,"date":"2025-11-14","payment":812.99,"interest":597.53,"principal":215.46,"balance":125127.67,"collected":true},{"month":65,"date":"2025-12-15","payment":812.99,"interest":637.64,"principal":175.35,"balance":124952.32,"collected":true},{"month":66,"date":"2026-01-15","payment":812.99,"interest":636.74,"principal":176.25,"balance":124776.07,"collected":true},{"month":67,"date":"2026-02-13","payment":812.99,"interest":594.82,"principal":218.17,"balance":124557.91,"collected":true},{"month":68,"date":"2026-03-13","payment":812.99,"interest":573.31,"principal":239.68,"balance":124318.22,"collected":true}]},{"id":"905 Manchester (#5)","address":"905 Manchester","closing":5,"borrower":"Provident Trust Group, LLC FBO: Paul Saenz Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":124317.87,"lastPmtDate":"2026-03-13","lastPmtAmount":812.99,"nextDueDate":"2026-05-01","daysSinceLastPmt":17,"daysPastDue":0,"status":"Current","totalCollected":70,"remainingPayments":52,"payments":[{"month":57,"date":"2025-04-16","payment":812.99,"interest":603.72,"principal":209.27,"balance":126432.12,"collected":true},{"month":58,"date":"2025-05-15","payment":812.99,"interest":602.72,"principal":210.27,"balance":126221.85,"collected":true},{"month":59,"date":"2025-06-12","payment":812.99,"interest":580.97,"principal":232.02,"balance":125989.82,"collected":true},{"month":60,"date":"2025-07-15","payment":812.99,"interest":683.45,"principal":129.54,"balance":125860.28,"collected":true},{"month":61,"date":"2025-08-15","payment":812.99,"interest":641.37,"principal":171.62,"balance":125688.66,"collected":true},{"month":62,"date":"2025-09-15","payment":812.99,"interest":640.5,"principal":172.49,"balance":125516.17,"collected":true},{"month":63,"date":"2025-10-16","payment":812.99,"interest":639.62,"principal":173.37,"balance":125342.8,"collected":true},{"month":64,"date":"2025-11-14","payment":812.99,"interest":597.52,"principal":215.47,"balance":125127.33,"collected":true},{"month":65,"date":"2025-12-15","payment":812.99,"interest":637.64,"principal":175.35,"balance":124951.98,"collected":true},{"month":66,"date":"2026-01-15","payment":812.99,"interest":636.74,"principal":176.25,"balance":124775.73,"collected":true},{"month":67,"date":"2026-02-13","payment":812.99,"interest":594.82,"principal":218.17,"balance":124557.56,"collected":true},{"month":68,"date":"2026-03-13","payment":812.99,"interest":573.31,"principal":239.68,"balance":124317.87,"collected":true}]},{"id":"906 Manchester (#5)","address":"906 Manchester","closing":5,"borrower":"Grodt, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":124903.53,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":53,"payments":[{"month":56,"date":"2025-03-31","payment":812.99,"interest":647.75,"principal":165.24,"balance":126946.72,"collected":true},{"month":57,"date":"2025-04-30","payment":812.99,"interest":626.04,"principal":186.95,"balance":126759.77,"collected":true},{"month":58,"date":"2025-05-30","payment":812.99,"interest":625.12,"principal":187.87,"balance":126571.89,"collected":true},{"month":59,"date":"2025-06-30","payment":812.99,"interest":645,"principal":167.99,"balance":126403.9,"collected":true},{"month":60,"date":"2025-07-31","payment":812.99,"interest":644.14,"principal":168.85,"balance":126235.05,"collected":true},{"month":61,"date":"2025-08-29","payment":812.99,"interest":601.78,"principal":211.21,"balance":126023.84,"collected":true},{"month":62,"date":"2025-09-30","payment":812.99,"interest":662.92,"principal":150.07,"balance":125873.77,"collected":true},{"month":63,"date":"2025-10-31","payment":812.99,"interest":641.44,"principal":171.55,"balance":125702.22,"collected":true},{"month":64,"date":"2025-11-28","payment":812.99,"interest":578.57,"principal":234.42,"balance":125467.8,"collected":true},{"month":65,"date":"2025-12-31","payment":812.99,"interest":680.62,"principal":132.37,"balance":125335.43,"collected":true},{"month":66,"date":"2026-01-30","payment":812.99,"interest":618.09,"principal":194.9,"balance":125140.53,"collected":true},{"month":67,"date":"2026-02-27","payment":812.99,"interest":575.99,"principal":237,"balance":124903.53,"collected":true}]},{"id":"1426 Kingston (#5)","address":"1426 Kingston","closing":5,"borrower":"Provident Trust Group, LLC FBO: Edward J. Valencia Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-10","monthlyPmt":812.99,"balloonDate":"2030-07-10","currentBalance":125005.11,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":53,"payments":[{"month":56,"date":"2025-04-02","payment":812.99,"interest":606.42,"principal":206.57,"balance":127001.91,"collected":true},{"month":57,"date":"2025-05-02","payment":812.99,"interest":626.31,"principal":186.68,"balance":126815.23,"collected":true},{"month":58,"date":"2025-06-03","payment":812.99,"interest":667.08,"principal":145.91,"balance":126669.32,"collected":true},{"month":59,"date":"2025-07-02","payment":812.99,"interest":603.85,"principal":209.14,"balance":126460.18,"collected":true},{"month":60,"date":"2025-08-04","payment":812.99,"interest":686,"principal":126.99,"balance":126333.19,"collected":true},{"month":61,"date":"2025-09-03","payment":812.99,"interest":623.01,"principal":189.98,"balance":126143.22,"collected":true},{"month":62,"date":"2025-10-02","payment":812.99,"interest":601.34,"principal":211.65,"balance":125931.57,"collected":true},{"month":63,"date":"2025-11-04","payment":812.99,"interest":683.14,"principal":129.85,"balance":125801.71,"collected":true},{"month":64,"date":"2025-12-02","payment":812.99,"interest":579.03,"principal":233.96,"balance":125567.75,"collected":true},{"month":65,"date":"2026-01-05","payment":812.99,"interest":701.8,"principal":111.19,"balance":125456.57,"collected":true},{"month":66,"date":"2026-02-03","payment":812.99,"interest":598.07,"principal":214.92,"balance":125241.65,"collected":true},{"month":67,"date":"2026-03-03","payment":812.99,"interest":576.45,"principal":236.54,"balance":125005.11,"collected":true}]},{"id":"1406 Kingston (#7)","address":"1406 Kingston","closing":7,"borrower":"Hardy Enterprise LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-31","monthlyPmt":812.99,"balloonDate":"2030-07-31","currentBalance":104000.9,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":53,"payments":[{"month":57,"date":"2025-04-30","payment":812.99,"interest":626.04,"principal":186.95,"balance":126759.12,"collected":true},{"month":58,"date":"2025-05-30","payment":812.99,"interest":625.11,"principal":187.88,"balance":126571.25,"collected":true},{"month":null,"date":"2025-06-03","payment":20000,"interest":0,"principal":20000,"balance":106571.25,"collected":true},{"month":59,"date":"2025-06-30","payment":812.99,"interest":473,"principal":256.77,"balance":106314.48,"collected":true},{"month":60,"date":"2025-07-31","payment":812.99,"interest":541.77,"principal":271.22,"balance":106043.26,"collected":true},{"month":61,"date":"2025-08-29","payment":812.99,"interest":505.52,"principal":307.47,"balance":105735.79,"collected":true},{"month":62,"date":"2025-09-30","payment":812.99,"interest":556.2,"principal":256.79,"balance":105479,"collected":true},{"month":63,"date":"2025-10-31","payment":812.99,"interest":537.51,"principal":275.48,"balance":105203.52,"collected":true},{"month":64,"date":"2025-11-28","payment":812.99,"interest":484.22,"principal":328.77,"balance":104874.75,"collected":true},{"month":65,"date":"2025-12-31","payment":812.99,"interest":568.91,"principal":244.08,"balance":104630.67,"collected":true},{"month":66,"date":"2026-01-30","payment":812.99,"interest":515.99,"principal":297,"balance":104333.67,"collected":true},{"month":67,"date":"2026-02-27","payment":812.99,"interest":480.22,"principal":332.77,"balance":104000.9,"collected":true}]},{"id":"1418 Kingston (#7)","address":"1418 Kingston","closing":7,"borrower":"Bravo Investment Group, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-31","monthlyPmt":812.99,"balloonDate":"2030-07-31","currentBalance":124776.68,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":53,"payments":[{"month":56,"date":"2025-03-31","payment":812.99,"interest":647.14,"principal":165.85,"balance":126825.89,"collected":true},{"month":57,"date":"2025-04-30","payment":812.99,"interest":625.44,"principal":187.55,"balance":126638.34,"collected":true},{"month":58,"date":"2025-05-30","payment":812.99,"interest":624.52,"principal":188.47,"balance":126449.87,"collected":true},{"month":59,"date":"2025-06-30","payment":812.99,"interest":644.37,"principal":168.62,"balance":126281.25,"collected":true},{"month":60,"date":"2025-07-31","payment":812.99,"interest":643.52,"principal":169.47,"balance":126111.78,"collected":true},{"month":61,"date":"2025-09-04","payment":812.99,"interest":725.57,"principal":87.42,"balance":126024.36,"collected":true},{"month":62,"date":"2025-09-30","payment":812.99,"interest":538.62,"principal":274.37,"balance":125750,"collected":true},{"month":63,"date":"2025-10-31","payment":812.99,"interest":640.81,"principal":172.18,"balance":125577.81,"collected":true},{"month":64,"date":"2025-11-28","payment":812.99,"interest":578,"principal":234.99,"balance":125342.83,"collected":true},{"month":65,"date":"2025-12-31","payment":812.99,"interest":679.94,"principal":133.05,"balance":125209.78,"collected":true},{"month":66,"date":"2026-01-30","payment":812.99,"interest":617.47,"principal":195.52,"balance":125014.26,"collected":true},{"month":67,"date":"2026-02-27","payment":812.99,"interest":575.41,"principal":237.58,"balance":124776.68,"collected":true}]},{"id":"1420 Kingston (#7)","address":"1420 Kingston","closing":7,"borrower":"Bravo Investment Group, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-07-31","monthlyPmt":812.99,"balloonDate":"2030-07-31","currentBalance":124799.31,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":53,"payments":[{"month":56,"date":"2025-03-31","payment":812.99,"interest":647.24,"principal":165.75,"balance":126847.32,"collected":true},{"month":57,"date":"2025-04-30","payment":812.99,"interest":625.55,"principal":187.44,"balance":126659.88,"collected":true},{"month":58,"date":"2025-05-30","payment":812.99,"interest":624.62,"principal":188.37,"balance":126471.51,"collected":true},{"month":59,"date":"2025-06-30","payment":812.99,"interest":644.48,"principal":168.51,"balance":126303,"collected":true},{"month":60,"date":"2025-07-31","payment":812.99,"interest":643.63,"principal":169.36,"balance":126133.64,"collected":true},{"month":61,"date":"2025-09-04","payment":812.99,"interest":725.7,"principal":87.29,"balance":126046.35,"collected":true},{"month":62,"date":"2025-09-30","payment":812.99,"interest":538.72,"principal":274.27,"balance":125772.08,"collected":true},{"month":63,"date":"2025-10-31","payment":812.99,"interest":640.92,"principal":172.07,"balance":125600.01,"collected":true},{"month":64,"date":"2025-11-28","payment":812.99,"interest":578.1,"principal":234.89,"balance":125365.12,"collected":true},{"month":65,"date":"2025-12-31","payment":812.99,"interest":680.06,"principal":132.93,"balance":125232.2,"collected":true},{"month":66,"date":"2026-01-30","payment":812.99,"interest":617.58,"principal":195.41,"balance":125036.79,"collected":true},{"month":67,"date":"2026-02-27","payment":812.99,"interest":575.51,"principal":237.48,"balance":124799.31,"collected":true}]},{"id":"1305 Kingston (#8)","address":"1305 Kingston","closing":8,"borrower":"FilAm LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-07","monthlyPmt":812.99,"balloonDate":"2030-08-07","currentBalance":124114.13,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":66,"remainingPayments":54,"payments":[{"month":55,"date":"2025-03-31","payment":812.99,"interest":643.96,"principal":169.03,"balance":126199.27,"collected":true},{"month":56,"date":"2025-04-30","payment":812.99,"interest":622.35,"principal":190.64,"balance":126008.63,"collected":true},{"month":57,"date":"2025-05-30","payment":812.99,"interest":621.41,"principal":191.58,"balance":125817.05,"collected":true},{"month":58,"date":"2025-06-30","payment":812.99,"interest":641.15,"principal":171.84,"balance":125645.21,"collected":true},{"month":59,"date":"2025-07-31","payment":812.99,"interest":640.27,"principal":172.72,"balance":125472.5,"collected":true},{"month":60,"date":"2025-08-29","payment":812.99,"interest":598.14,"principal":214.85,"balance":125257.65,"collected":true},{"month":61,"date":"2025-09-30","payment":812.99,"interest":658.89,"principal":154.1,"balance":125103.55,"collected":true},{"month":62,"date":"2025-10-31","payment":812.99,"interest":637.51,"principal":175.48,"balance":124928.07,"collected":true},{"month":63,"date":"2025-11-28","payment":812.99,"interest":575.01,"principal":237.98,"balance":124690.09,"collected":true},{"month":64,"date":"2025-12-31","payment":812.99,"interest":676.4,"principal":136.59,"balance":124553.51,"collected":true},{"month":65,"date":"2026-01-30","payment":812.99,"interest":614.24,"principal":198.75,"balance":124354.75,"collected":true},{"month":66,"date":"2026-02-27","payment":812.99,"interest":572.37,"principal":240.62,"balance":124114.13,"collected":true}]},{"id":"1020 Preston (#9)","address":"1020 Preston","closing":9,"borrower":"AC Trimble Management LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-14","monthlyPmt":812.99,"balloonDate":"2030-08-14","currentBalance":125073.07,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":67,"remainingPayments":54,"payments":[{"month":55,"date":"2025-03-31","payment":812.99,"interest":648.56,"principal":164.43,"balance":127107.25,"collected":true},{"month":56,"date":"2025-04-30","payment":812.99,"interest":626.83,"principal":186.16,"balance":126921.09,"collected":true},{"month":57,"date":"2025-05-30","payment":812.99,"interest":625.91,"principal":187.08,"balance":126734.01,"collected":true},{"month":58,"date":"2025-06-30","payment":812.99,"interest":645.82,"principal":167.17,"balance":126566.84,"collected":true},{"month":59,"date":"2025-07-31","payment":812.99,"interest":644.97,"principal":168.02,"balance":126398.82,"collected":true},{"month":60,"date":"2025-08-29","payment":812.99,"interest":602.56,"principal":210.43,"balance":126188.39,"collected":true},{"month":61,"date":"2025-09-30","payment":812.99,"interest":663.79,"principal":149.2,"balance":126039.19,"collected":true},{"month":62,"date":"2025-10-31","payment":812.99,"interest":642.28,"principal":170.71,"balance":125868.48,"collected":true},{"month":63,"date":"2025-11-28","payment":812.99,"interest":579.34,"principal":233.65,"balance":125634.83,"collected":true},{"month":64,"date":"2025-12-31","payment":812.99,"interest":681.53,"principal":131.46,"balance":125503.36,"collected":true},{"month":65,"date":"2026-01-30","payment":812.99,"interest":618.92,"principal":194.07,"balance":125309.29,"collected":true},{"month":66,"date":"2026-02-27","payment":812.99,"interest":576.77,"principal":236.22,"balance":125073.07,"collected":true}]},{"id":"1116 Preston (#9)","address":"1116 Preston","closing":9,"borrower":"AC Trimble Management LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-14","monthlyPmt":812.99,"balloonDate":"2030-08-14","currentBalance":125073.07,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":67,"remainingPayments":54,"payments":[{"month":55,"date":"2025-03-31","payment":812.99,"interest":648.56,"principal":164.43,"balance":127107.25,"collected":true},{"month":56,"date":"2025-04-30","payment":812.99,"interest":626.83,"principal":186.16,"balance":126921.09,"collected":true},{"month":57,"date":"2025-05-30","payment":812.99,"interest":625.91,"principal":187.08,"balance":126734.01,"collected":true},{"month":58,"date":"2025-06-30","payment":812.99,"interest":645.82,"principal":167.17,"balance":126566.84,"collected":true},{"month":59,"date":"2025-07-31","payment":812.99,"interest":644.97,"principal":168.02,"balance":126398.82,"collected":true},{"month":60,"date":"2025-08-29","payment":812.99,"interest":602.56,"principal":210.43,"balance":126188.39,"collected":true},{"month":61,"date":"2025-09-30","payment":812.99,"interest":663.79,"principal":149.2,"balance":126039.19,"collected":true},{"month":62,"date":"2025-10-31","payment":812.99,"interest":642.28,"principal":170.71,"balance":125868.48,"collected":true},{"month":63,"date":"2025-11-28","payment":812.99,"interest":579.34,"principal":233.65,"balance":125634.83,"collected":true},{"month":64,"date":"2025-12-31","payment":812.99,"interest":681.53,"principal":131.46,"balance":125503.36,"collected":true},{"month":65,"date":"2026-01-30","payment":812.99,"interest":618.92,"principal":194.07,"balance":125309.29,"collected":true},{"month":66,"date":"2026-02-27","payment":812.99,"interest":576.77,"principal":236.22,"balance":125073.07,"collected":true}]},{"id":"1306 Kingston (#10)","address":"1306 Kingston","closing":10,"borrower":"Provident Trust Group, LLC FBO: Felipe Barreto Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-21","monthlyPmt":812.99,"balloonDate":"2030-08-21","currentBalance":125025.84,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-02","payment":812.99,"interest":606.51,"principal":206.48,"balance":127021.53,"collected":true},{"month":56,"date":"2025-05-02","payment":812.99,"interest":626.41,"principal":186.58,"balance":126834.95,"collected":true},{"month":57,"date":"2025-06-03","payment":812.99,"interest":667.19,"principal":145.8,"balance":126689.15,"collected":true},{"month":58,"date":"2025-07-02","payment":812.99,"interest":603.94,"principal":209.05,"balance":126480.1,"collected":true},{"month":59,"date":"2025-08-04","payment":812.99,"interest":686.11,"principal":126.88,"balance":126353.22,"collected":true},{"month":60,"date":"2025-09-03","payment":812.99,"interest":623.11,"principal":189.88,"balance":126163.34,"collected":true},{"month":61,"date":"2025-10-02","payment":812.99,"interest":601.44,"principal":211.55,"balance":125951.79,"collected":true},{"month":62,"date":"2025-11-04","payment":812.99,"interest":683.25,"principal":129.74,"balance":125822.05,"collected":true},{"month":63,"date":"2025-12-02","payment":812.99,"interest":579.13,"principal":233.86,"balance":125588.18,"collected":true},{"month":64,"date":"2026-01-05","payment":812.99,"interest":701.92,"principal":111.07,"balance":125477.11,"collected":true},{"month":65,"date":"2026-02-03","payment":812.99,"interest":598.16,"principal":214.83,"balance":125262.28,"collected":true},{"month":66,"date":"2026-03-03","payment":812.99,"interest":576.55,"principal":236.44,"balance":125025.84,"collected":true}]},{"id":"708 Hillshire (#10)","address":"708 Hillshire","closing":10,"borrower":"Savema, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-21","monthlyPmt":812.99,"balloonDate":"2030-08-21","currentBalance":125079.31,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":67,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-01","payment":812.99,"interest":607.04,"principal":205.95,"balance":127133.17,"collected":true},{"month":56,"date":"2025-05-01","payment":812.99,"interest":626.96,"principal":186.03,"balance":126947.13,"collected":true},{"month":57,"date":"2025-06-02","payment":812.99,"interest":667.78,"principal":145.21,"balance":126801.92,"collected":true},{"month":58,"date":"2025-07-02","payment":812.99,"interest":625.32,"principal":187.67,"balance":126614.26,"collected":true},{"month":59,"date":"2025-07-31","payment":812.99,"interest":603.59,"principal":209.4,"balance":126404.85,"collected":true},{"month":60,"date":"2025-08-29","payment":812.99,"interest":602.59,"principal":210.4,"balance":126194.45,"collected":true},{"month":61,"date":"2025-09-30","payment":812.99,"interest":663.82,"principal":149.17,"balance":126045.28,"collected":true},{"month":62,"date":"2025-10-31","payment":812.99,"interest":642.31,"principal":170.68,"balance":125874.6,"collected":true},{"month":63,"date":"2025-11-28","payment":812.99,"interest":579.37,"principal":233.62,"balance":125640.98,"collected":true},{"month":64,"date":"2025-12-31","payment":812.99,"interest":681.56,"principal":131.43,"balance":125509.55,"collected":true},{"month":65,"date":"2026-01-30","payment":812.99,"interest":618.95,"principal":194.04,"balance":125315.51,"collected":true},{"month":66,"date":"2026-02-27","payment":812.99,"interest":576.79,"principal":236.2,"balance":125079.31,"collected":true}]},{"id":"1018 Preston (#10)","address":"1018 Preston","closing":10,"borrower":"Savema, LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-21","monthlyPmt":812.99,"balloonDate":"2030-08-21","currentBalance":125079.31,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":67,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-01","payment":812.99,"interest":607.04,"principal":205.95,"balance":127133.17,"collected":true},{"month":56,"date":"2025-05-01","payment":812.99,"interest":626.96,"principal":186.03,"balance":126947.13,"collected":true},{"month":57,"date":"2025-06-02","payment":812.99,"interest":667.78,"principal":145.21,"balance":126801.92,"collected":true},{"month":58,"date":"2025-07-02","payment":812.99,"interest":625.32,"principal":187.67,"balance":126614.26,"collected":true},{"month":59,"date":"2025-07-31","payment":812.99,"interest":603.59,"principal":209.4,"balance":126404.85,"collected":true},{"month":60,"date":"2025-08-29","payment":812.99,"interest":602.59,"principal":210.4,"balance":126194.45,"collected":true},{"month":61,"date":"2025-09-30","payment":812.99,"interest":663.82,"principal":149.17,"balance":126045.28,"collected":true},{"month":62,"date":"2025-10-31","payment":812.99,"interest":642.31,"principal":170.68,"balance":125874.6,"collected":true},{"month":63,"date":"2025-11-28","payment":812.99,"interest":579.37,"principal":233.62,"balance":125640.98,"collected":true},{"month":64,"date":"2025-12-31","payment":812.99,"interest":681.56,"principal":131.43,"balance":125509.55,"collected":true},{"month":65,"date":"2026-01-30","payment":812.99,"interest":618.95,"principal":194.04,"balance":125315.51,"collected":true},{"month":66,"date":"2026-02-27","payment":812.99,"interest":576.79,"principal":236.2,"balance":125079.31,"collected":true}]},{"id":"908 Manchester (#11)","address":"908 Manchester","closing":11,"borrower":"Provident Trust Group, LLC FBO: Tara Colvin Traditional IRA","loanAmt":169200,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-28","monthlyPmt":1014.44,"balloonDate":"2030-08-28","currentBalance":156261.77,"lastPmtDate":"2026-03-05","lastPmtAmount":1014.44,"nextDueDate":"2026-04-01","daysSinceLastPmt":25,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-07","payment":1014.44,"interest":810.33,"principal":204.11,"balance":158813.1,"collected":true},{"month":56,"date":"2025-05-05","payment":1014.44,"interest":730.98,"principal":283.46,"balance":158529.64,"collected":true},{"month":57,"date":"2025-06-10","payment":1014.44,"interest":938.15,"principal":76.29,"balance":158453.34,"collected":true},{"month":58,"date":"2025-07-07","payment":1014.44,"interest":703.27,"principal":311.17,"balance":158142.18,"collected":true},{"month":59,"date":"2025-08-06","payment":1014.44,"interest":779.88,"principal":234.56,"balance":157907.62,"collected":true},{"month":60,"date":"2025-09-09","payment":1014.44,"interest":882.55,"principal":131.89,"balance":157775.73,"collected":true},{"month":61,"date":"2025-10-07","payment":1014.44,"interest":726.2,"principal":288.24,"balance":157487.49,"collected":true},{"month":62,"date":"2025-11-10","payment":1014.44,"interest":880.2,"principal":134.24,"balance":157353.25,"collected":true},{"month":63,"date":"2025-12-05","payment":1014.44,"interest":646.66,"principal":367.78,"balance":156985.47,"collected":true},{"month":64,"date":"2026-01-06","payment":1014.44,"interest":825.79,"principal":188.65,"balance":156796.82,"collected":true},{"month":65,"date":"2026-02-05","payment":1014.44,"interest":773.24,"principal":241.2,"balance":156555.62,"collected":true},{"month":66,"date":"2026-03-05","payment":1014.44,"interest":720.58,"principal":293.86,"balance":156261.77,"collected":true}]},{"id":"1210 Kingston (#11)","address":"1210 Kingston","closing":11,"borrower":"Provident Trust Group, LLC FBO: Tara Colvin Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-28","monthlyPmt":812.99,"balloonDate":"2030-08-28","currentBalance":125235.42,"lastPmtDate":"2026-03-05","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":25,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-07","payment":812.99,"interest":649.44,"principal":163.55,"balance":127279.86,"collected":true},{"month":56,"date":"2025-05-05","payment":812.99,"interest":585.84,"principal":227.15,"balance":127052.71,"collected":true},{"month":57,"date":"2025-06-10","payment":812.99,"interest":751.87,"principal":61.12,"balance":126991.59,"collected":true},{"month":58,"date":"2025-07-07","payment":812.99,"interest":563.63,"principal":249.36,"balance":126742.24,"collected":true},{"month":59,"date":"2025-08-06","payment":812.99,"interest":625.03,"principal":187.96,"balance":126554.28,"collected":true},{"month":60,"date":"2025-09-09","payment":812.99,"interest":707.32,"principal":105.67,"balance":126448.61,"collected":true},{"month":61,"date":"2025-10-07","payment":812.99,"interest":582.01,"principal":230.98,"balance":126217.63,"collected":true},{"month":62,"date":"2025-11-10","payment":812.99,"interest":705.44,"principal":107.55,"balance":126110.07,"collected":true},{"month":63,"date":"2025-12-05","payment":812.99,"interest":518.26,"principal":294.73,"balance":125815.34,"collected":true},{"month":64,"date":"2026-01-06","payment":812.99,"interest":661.82,"principal":151.17,"balance":125664.18,"collected":true},{"month":65,"date":"2026-02-05","payment":812.99,"interest":619.71,"principal":193.28,"balance":125470.9,"collected":true},{"month":66,"date":"2026-03-05","payment":812.99,"interest":577.51,"principal":235.48,"balance":125235.42,"collected":true}]},{"id":"1216 Kingston (#11)","address":"1216 Kingston","closing":11,"borrower":"Provident Trust Group, LLC FBO: Geiby George Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-28","monthlyPmt":812.99,"balloonDate":"2030-08-28","currentBalance":125222.27,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-02","payment":812.99,"interest":607.39,"principal":205.6,"balance":127207.46,"collected":true},{"month":56,"date":"2025-05-02","payment":812.99,"interest":627.32,"principal":185.67,"balance":127021.8,"collected":true},{"month":57,"date":"2025-06-03","payment":812.99,"interest":668.17,"principal":144.82,"balance":126876.98,"collected":true},{"month":58,"date":"2025-07-02","payment":812.99,"interest":604.84,"principal":208.15,"balance":126668.83,"collected":true},{"month":59,"date":"2025-08-04","payment":812.99,"interest":687.14,"principal":125.85,"balance":126542.97,"collected":true},{"month":60,"date":"2025-09-03","payment":812.99,"interest":624.05,"principal":188.94,"balance":126354.03,"collected":true},{"month":61,"date":"2025-10-02","payment":812.99,"interest":602.35,"principal":210.64,"balance":126143.38,"collected":true},{"month":62,"date":"2025-11-04","payment":812.99,"interest":684.28,"principal":128.71,"balance":126014.68,"collected":true},{"month":63,"date":"2025-12-02","payment":812.99,"interest":580.01,"principal":232.98,"balance":125781.7,"collected":true},{"month":64,"date":"2026-01-05","payment":812.99,"interest":703,"principal":109.99,"balance":125671.71,"collected":true},{"month":65,"date":"2026-02-03","payment":812.99,"interest":599.09,"principal":213.9,"balance":125457.81,"collected":true},{"month":66,"date":"2026-03-03","payment":812.99,"interest":577.45,"principal":235.54,"balance":125222.27,"collected":true}]},{"id":"1217 Kingston (#11)","address":"1217 Kingston","closing":11,"borrower":"Provident Trust Group, LLC FBO: Geiby George Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-08-28","monthlyPmt":812.99,"balloonDate":"2030-08-28","currentBalance":125222.27,"lastPmtDate":"2026-03-03","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":27,"daysPastDue":0,"status":"Current","totalCollected":68,"remainingPayments":54,"payments":[{"month":55,"date":"2025-04-02","payment":812.99,"interest":607.39,"principal":205.6,"balance":127207.46,"collected":true},{"month":56,"date":"2025-05-02","payment":812.99,"interest":627.32,"principal":185.67,"balance":127021.8,"collected":true},{"month":57,"date":"2025-06-03","payment":812.99,"interest":668.17,"principal":144.82,"balance":126876.98,"collected":true},{"month":58,"date":"2025-07-02","payment":812.99,"interest":604.84,"principal":208.15,"balance":126668.83,"collected":true},{"month":59,"date":"2025-08-04","payment":812.99,"interest":687.14,"principal":125.85,"balance":126542.97,"collected":true},{"month":60,"date":"2025-09-03","payment":812.99,"interest":624.05,"principal":188.94,"balance":126354.03,"collected":true},{"month":61,"date":"2025-10-02","payment":812.99,"interest":602.35,"principal":210.64,"balance":126143.38,"collected":true},{"month":62,"date":"2025-11-04","payment":812.99,"interest":684.28,"principal":128.71,"balance":126014.68,"collected":true},{"month":63,"date":"2025-12-02","payment":812.99,"interest":580.01,"principal":232.98,"balance":125781.7,"collected":true},{"month":64,"date":"2026-01-05","payment":812.99,"interest":703,"principal":109.99,"balance":125671.71,"collected":true},{"month":65,"date":"2026-02-03","payment":812.99,"interest":599.09,"principal":213.9,"balance":125457.81,"collected":true},{"month":66,"date":"2026-03-03","payment":812.99,"interest":577.45,"principal":235.54,"balance":125222.27,"collected":true}]},{"id":"1105 Leeds (#12)","address":"1105 Leeds","closing":12,"borrower":"Gloria D. Lacap, legal owner via non-trust custodial IRA with AET","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-09-04","monthlyPmt":812.99,"balloonDate":"2030-09-04","currentBalance":124441.78,"lastPmtDate":"2026-03-04","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":26,"daysPastDue":0,"status":"Current","totalCollected":69,"remainingPayments":55,"payments":[{"month":54,"date":"2025-04-04","payment":812.99,"interest":666.15,"principal":146.84,"balance":126491.26,"collected":true},{"month":55,"date":"2025-05-02","payment":812.99,"interest":582.21,"principal":230.78,"balance":126260.47,"collected":true},{"month":56,"date":"2025-06-02","payment":812.99,"interest":643.41,"principal":169.58,"balance":126090.89,"collected":true},{"month":57,"date":"2025-06-30","payment":812.99,"interest":580.36,"principal":232.63,"balance":125858.27,"collected":true},{"month":58,"date":"2025-08-01","payment":812.99,"interest":662.05,"principal":150.94,"balance":125707.32,"collected":true},{"month":59,"date":"2025-09-02","payment":812.99,"interest":661.25,"principal":151.74,"balance":125555.59,"collected":true},{"month":60,"date":"2025-10-07","payment":812.99,"interest":722.37,"principal":90.62,"balance":125464.97,"collected":true},{"month":61,"date":"2025-11-04","payment":812.99,"interest":577.48,"principal":235.51,"balance":125229.47,"collected":true},{"month":62,"date":"2025-12-01","payment":812.99,"interest":555.81,"principal":257.18,"balance":124972.29,"collected":true},{"month":63,"date":"2026-01-05","payment":812.99,"interest":719.02,"principal":93.97,"balance":124878.32,"collected":true},{"month":64,"date":"2026-02-02","payment":812.99,"interest":574.78,"principal":238.21,"balance":124640.11,"collected":true},{"month":65,"date":"2026-03-04","payment":812.99,"interest":614.66,"principal":198.33,"balance":124441.78,"collected":true}]},{"id":"1213 Kingston (#13)","address":"1213 Kingston","closing":13,"borrower":"Best Rental LLC","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-09-11","monthlyPmt":812.99,"balloonDate":"2030-09-11","currentBalance":123942.8,"lastPmtDate":"2026-03-23","lastPmtAmount":812.99,"nextDueDate":"2026-05-01","daysSinceLastPmt":7,"daysPastDue":0,"status":"Current","totalCollected":65,"remainingPayments":54,"payments":[{"month":54,"date":"2025-03-26","payment":812.99,"interest":586.32,"principal":226.67,"balance":127157.26,"collected":true},{"month":55,"date":"2025-04-25","payment":812.99,"interest":627.08,"principal":185.91,"balance":126971.35,"collected":true},{"month":56,"date":"2025-05-28","payment":812.99,"interest":688.78,"principal":124.21,"balance":126847.14,"collected":true},{"month":57,"date":"2025-06-25","payment":812.99,"interest":583.84,"principal":229.15,"balance":126617.99,"collected":true},{"month":58,"date":"2025-08-21","payment":2520.27,"interest":1186.39,"principal":1293.23,"balance":125324.76,"collected":true},{"month":60,"date":"2025-09-29","payment":812.99,"interest":803.45,"principal":9.54,"balance":125315.23,"collected":true},{"month":61,"date":"2025-10-27","payment":812.99,"interest":576.79,"principal":236.2,"balance":125079.03,"collected":true},{"month":62,"date":"2025-11-26","payment":812.99,"interest":616.83,"principal":196.16,"balance":124882.87,"collected":true},{"month":63,"date":"2026-01-29","payment":812.99,"interest":1313.84,"principal":0,"balance":124882.87,"collected":true},{"month":64,"date":"2026-01-29","payment":812.99,"interest":0,"principal":312.14,"balance":124570.72,"collected":true},{"month":65,"date":"2026-03-09","payment":900,"interest":798.62,"principal":101.38,"balance":124469.34,"collected":true},{"month":66,"date":"2026-03-23","payment":812.99,"interest":286.45,"principal":526.54,"balance":123942.8,"collected":true}]},{"id":"1309 Kingston (#14)","address":"1309 Kingston","closing":14,"borrower":"Provident Trust Group, LLC FBO: Omar Jonathan C. Hiponia Traditional IRA","loanAmt":169200,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-09-18","monthlyPmt":1014.44,"balloonDate":"2030-09-18","currentBalance":156506.12,"lastPmtDate":"2026-03-05","lastPmtAmount":1014.44,"nextDueDate":"2026-04-01","daysSinceLastPmt":25,"daysPastDue":0,"status":"Current","totalCollected":67,"remainingPayments":55,"payments":[{"month":54,"date":"2025-04-07","payment":1014.44,"interest":811.51,"principal":202.93,"balance":159044.5,"collected":true},{"month":55,"date":"2025-05-05","payment":1014.44,"interest":732.04,"principal":282.4,"balance":158762.1,"collected":true},{"month":56,"date":"2025-06-10","payment":1014.44,"interest":939.52,"principal":74.92,"balance":158687.19,"collected":true},{"month":57,"date":"2025-07-07","payment":1014.44,"interest":704.31,"principal":310.13,"balance":158377.06,"collected":true},{"month":58,"date":"2025-08-06","payment":1014.44,"interest":781.04,"principal":233.4,"balance":158143.66,"collected":true},{"month":59,"date":"2025-09-09","payment":1014.44,"interest":883.87,"principal":130.57,"balance":158013.09,"collected":true},{"month":60,"date":"2025-10-07","payment":1014.44,"interest":727.29,"principal":287.15,"balance":157725.94,"collected":true},{"month":61,"date":"2025-11-10","payment":1014.44,"interest":881.54,"principal":132.9,"balance":157593.04,"collected":true},{"month":62,"date":"2025-12-05","payment":1014.44,"interest":647.64,"principal":366.8,"balance":157226.24,"collected":true},{"month":63,"date":"2026-01-06","payment":1014.44,"interest":827.05,"principal":187.39,"balance":157038.85,"collected":true},{"month":64,"date":"2026-02-05","payment":1014.44,"interest":774.44,"principal":240,"balance":156798.85,"collected":true},{"month":65,"date":"2026-03-05","payment":1014.44,"interest":721.7,"principal":292.74,"balance":156506.12,"collected":true}]},{"id":"1214 Kingston (#16)","address":"1214 Kingston","closing":16,"borrower":"Provident Trust Group, LLC FBO: Anne M. Rhodus Roth IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-10-09","monthlyPmt":812.99,"balloonDate":"2030-10-09","currentBalance":123259.72,"lastPmtDate":"2026-02-27","lastPmtAmount":812.99,"nextDueDate":"2026-04-01","daysSinceLastPmt":31,"daysPastDue":0,"status":"Current","totalCollected":66,"remainingPayments":56,"payments":[{"month":53,"date":"2025-03-27","payment":812.99,"interest":598.38,"principal":214.61,"balance":125307.24,"collected":true},{"month":54,"date":"2025-04-28","payment":812.99,"interest":659.15,"principal":153.84,"balance":125153.4,"collected":true},{"month":55,"date":"2025-06-02","payment":812.99,"interest":720.06,"principal":92.93,"balance":125060.48,"collected":true},{"month":56,"date":"2025-06-27","payment":812.99,"interest":513.95,"principal":299.04,"balance":124761.43,"collected":true},{"month":57,"date":"2025-07-31","payment":812.99,"interest":697.3,"principal":115.69,"balance":124645.74,"collected":true},{"month":58,"date":"2025-08-28","payment":812.99,"interest":573.71,"principal":239.28,"balance":124406.46,"collected":true},{"month":59,"date":"2025-09-29","payment":812.99,"interest":654.41,"principal":158.58,"balance":124247.88,"collected":true},{"month":60,"date":"2025-10-30","payment":812.99,"interest":633.15,"principal":179.84,"balance":124068.05,"collected":true},{"month":61,"date":"2025-12-03","payment":812.99,"interest":693.42,"principal":119.57,"balance":123948.48,"collected":true},{"month":62,"date":"2026-01-12","payment":812.99,"interest":815,"principal":0,"balance":123948.48,"collected":true},{"month":63,"date":"2026-01-30","payment":812.99,"interest":366.75,"principal":444.22,"balance":123504.25,"collected":true},{"month":64,"date":"2026-02-27","payment":812.99,"interest":568.46,"principal":244.53,"balance":123259.72,"collected":true}]},{"id":"1101 Leeds (#17)","address":"Provident Trust Group, LLC FBO: Angela M. Grecian-Bransky Traditional IRA","closing":17,"borrower":"Provident Trust Group, LLC FBO: Angela M. Grecian-Bransky Traditional IRA","loanAmt":135600,"rate":0.06,"amortMonths":360,"balloonAt":120,"beginDate":"2020-10-16","monthlyPmt":812.99,"balloonDate":"2030-10-16","currentBalance":124719.08,"lastPmtDate":"2026-03-05","lastPmtAmount":812.99,"nextDueDate":"2026-05-01","daysSinceLastPmt":25,"daysPastDue":0,"status":"Current","totalCollected":66,"remainingPayments":55,"payments":[{"month":54,"date":"2025-04-01","payment":812.99,"interest":563.32,"principal":249.67,"balance":126671.12,"collected":true},{"month":55,"date":"2025-05-02","payment":812.99,"interest":645.5,"principal":167.49,"balance":126503.63,"collected":true},{"month":56,"date":"2025-06-02","payment":812.99,"interest":644.65,"principal":168.34,"balance":126335.29,"collected":true},{"month":57,"date":"2025-07-07","payment":812.99,"interest":726.86,"principal":86.13,"balance":126249.16,"collected":true},{"month":58,"date":"2025-08-01","payment":812.99,"interest":518.83,"principal":294.16,"balance":125955,"collected":true},{"month":59,"date":"2025-09-03","payment":812.99,"interest":683.26,"principal":129.73,"balance":125825.28,"collected":true},{"month":60,"date":"2025-10-06","payment":812.99,"interest":682.56,"principal":130.43,"balance":125694.85,"collected":true},{"month":61,"date":"2025-11-03","payment":812.99,"interest":578.54,"principal":234.45,"balance":125460.4,"collected":true},{"month":62,"date":"2025-12-03","payment":812.99,"interest":618.71,"principal":194.28,"balance":125266.11,"collected":true},{"month":63,"date":"2026-01-05","payment":812.99,"interest":679.53,"principal":133.46,"balance":125132.65,"collected":true},{"month":64,"date":"2026-02-02","payment":812.99,"interest":575.95,"principal":237.04,"balance":124895.61,"collected":true},{"month":65,"date":"2026-03-05","payment":812.99,"interest":636.45,"principal":176.54,"balance":124719.08,"collected":true}]}];
+const TODAY = new Date('2026-03-30');
+
+const fmt = (n) => n != null ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--';
+const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : '--';
+const fmtPct = (n) => (n * 100).toFixed(2) + '%';
+const statusClass = (s) => s.toLowerCase().replace(/\s+/g, '-');
+
+// ========== TABS ==========
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ========== OVERVIEW ==========
+function renderOverview() {
+  const totalBal = NOTES.reduce((s, n) => s + n.currentBalance, 0);
+  const totalMonthly = NOTES.reduce((s, n) => s + n.monthlyPmt, 0);
+  const currentN = NOTES.filter(n => n.status === 'Current').length;
+  const actionN = NOTES.filter(n => n.status !== 'Current').length;
+  const avgDPD = NOTES.length ? Math.round(NOTES.reduce((s, n) => s + n.daysPastDue, 0) / NOTES.length) : 0;
+
+  // Balloon within 12 months
+  const soon = NOTES.filter(n => {
+    const bd = new Date(n.balloonDate);
+    const diff = (bd - TODAY) / (1000*60*60*24*30);
+    return diff <= 12 && diff > 0;
+  }).length;
+
+  document.getElementById('kpiRow').innerHTML = [
+    {label: 'Active Notes', value: NOTES.length, cls: ''},
+    {label: 'Total Balance', value: fmt(totalBal), cls: ''},
+    {label: 'Expected Monthly', value: fmt(totalMonthly), cls: ''},
+    {label: 'Current', value: currentN, cls: 'green'},
+    {label: 'Action Needed', value: actionN, cls: actionN > 0 ? 'red' : 'green'},
+    {label: 'Avg Days Past Due', value: avgDPD, cls: avgDPD > 15 ? 'orange' : 'green'},
+    {label: 'Balloons in 12 Mo', value: soon, cls: soon > 0 ? 'yellow' : ''}
+  ].map(k => '<div class="kpi"><div class="label">' + k.label + '</div><div class="value ' + k.cls + '">' + k.value + '</div></div>').join('');
+
+  // Status doughnut
+  const statusCounts = {};
+  NOTES.forEach(n => { statusCounts[n.status] = (statusCounts[n.status] || 0) + 1; });
+  const statusLabels = Object.keys(statusCounts);
+  const statusColors = statusLabels.map(s => ({
+    'Current': '#2ecc71', 'Past Due': '#f1c40f', 'Late Notice': '#e67e22',
+    'Demand Letter': '#e74c3c', 'Severely Delinquent': '#ff6b6b'
+  }[s] || '#555'));
+
+  new Chart(document.getElementById('statusChart'), {
+    type: 'doughnut',
+    data: { labels: statusLabels, datasets: [{ data: statusLabels.map(s => statusCounts[s]), backgroundColor: statusColors, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#8890a4', font: { size: 12 } } } } }
+  });
+
+  // Aging bar
+  const buckets = { '0 (Current)': 0, '1-15': 0, '16-30': 0, '31-60': 0, '60+': 0 };
+  NOTES.forEach(n => {
+    if (n.daysPastDue === 0) buckets['0 (Current)']++;
+    else if (n.daysPastDue <= 15) buckets['1-15']++;
+    else if (n.daysPastDue <= 30) buckets['16-30']++;
+    else if (n.daysPastDue <= 60) buckets['31-60']++;
+    else buckets['60+']++;
+  });
+  new Chart(document.getElementById('agingChart'), {
+    type: 'bar',
+    data: { labels: Object.keys(buckets), datasets: [{ data: Object.values(buckets), backgroundColor: ['#2ecc71','#a8d854','#f1c40f','#e67e22','#e74c3c'], borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8890a4', stepSize: 1 }, grid: { color: '#2a2d3e' } }, x: { ticks: { color: '#8890a4' }, grid: { display: false } } } }
+  });
+
+  // Balance by closing
+  const closingBal = {};
+  NOTES.forEach(n => {
+    const key = '#' + n.closing;
+    closingBal[key] = (closingBal[key] || 0) + n.currentBalance;
+  });
+  const closingKeys = Object.keys(closingBal).sort((a,b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
+  new Chart(document.getElementById('closingChart'), {
+    type: 'bar',
+    data: { labels: closingKeys, datasets: [{ label: 'Balance', data: closingKeys.map(k => closingBal[k]), backgroundColor: '#c9952b', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8890a4', callback: v => '$' + (v/1000).toFixed(0) + 'K' }, grid: { color: '#2a2d3e' } }, x: { ticks: { color: '#8890a4' }, grid: { display: false } } } }
+  });
+
+  // Balloon timeline
+  const balloonByQ = {};
+  NOTES.forEach(n => {
+    const d = new Date(n.balloonDate);
+    const q = d.getFullYear() + ' Q' + (Math.floor(d.getMonth()/3)+1);
+    balloonByQ[q] = (balloonByQ[q] || 0) + 1;
+  });
+  const bKeys = Object.keys(balloonByQ).sort();
+  new Chart(document.getElementById('balloonChart'), {
+    type: 'bar',
+    data: { labels: bKeys, datasets: [{ label: 'Notes Maturing', data: bKeys.map(k => balloonByQ[k]), backgroundColor: '#3498db', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8890a4', stepSize: 1 }, grid: { color: '#2a2d3e' } }, x: { ticks: { color: '#8890a4', font: { size: 11 } }, grid: { display: false } } } }
+  });
+}
+
+// ========== PAYMENT STATUS ==========
+let sortCol = 'daysPastDue', sortDir = -1;
+
+function renderPayments() {
+  const statusF = document.getElementById('filterStatus').value;
+  const closingF = document.getElementById('filterClosing').value;
+  const searchF = document.getElementById('filterSearch').value.toLowerCase();
+
+  let filtered = NOTES.filter(n => {
+    if (statusF !== 'all' && n.status !== statusF) return false;
+    if (closingF !== 'all' && n.closing !== parseInt(closingF)) return false;
+    if (searchF && !n.address.toLowerCase().includes(searchF) && !n.borrower.toLowerCase().includes(searchF)) return false;
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (typeof va === 'string') return sortDir * va.localeCompare(vb);
+    return sortDir * ((va || 0) - (vb || 0));
+  });
+
+  document.getElementById('paymentBody').innerHTML = filtered.map(n =>
+    '<tr style="cursor:pointer" onclick="window.showDetail(\'' + n.id.replace(/'/g, "\\'") + '\')">' +
+    '<td>' + n.address + '</td>' +
+    '<td class="num">#' + n.closing + '</td>' +
+    '<td>' + n.borrower.substring(0, 35) + (n.borrower.length > 35 ? '...' : '') + '</td>' +
+    '<td class="num">' + fmt(n.monthlyPmt) + '</td>' +
+    '<td>' + fmtDate(n.lastPmtDate) + '</td>' +
+    '<td>' + fmtDate(n.nextDueDate) + '</td>' +
+    '<td class="num">' + (n.daysPastDue > 0 ? '<span style="color:' + (n.daysPastDue > 30 ? '#e74c3c' : n.daysPastDue > 15 ? '#e67e22' : '#f1c40f') + '">' + n.daysPastDue + '</span>' : '0') + '</td>' +
+    '<td class="num">' + fmt(n.currentBalance) + '</td>' +
+    '<td><span class="status ' + statusClass(n.status) + '">' + n.status + '</span></td>' +
+    '</tr>'
+  ).join('');
+}
+
+// Populate closing filter
+const closings = [...new Set(NOTES.map(n => n.closing))].sort((a,b) => a-b);
+closings.forEach(c => {
+  document.getElementById('filterClosing').innerHTML += '<option value="' + c + '">#' + c + '</option>';
+});
+
+document.getElementById('filterStatus').addEventListener('change', renderPayments);
+document.getElementById('filterClosing').addEventListener('change', renderPayments);
+document.getElementById('filterSearch').addEventListener('input', renderPayments);
+
+// Sort
+document.querySelectorAll('#paymentTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (sortCol === col) sortDir *= -1;
+    else { sortCol = col; sortDir = col === 'daysPastDue' ? -1 : 1; }
+    renderPayments();
+  });
+});
+
+// ========== COLLECTIONS ==========
+function renderCollections() {
+  const actionNotes = NOTES.filter(n => n.daysPastDue > 0);
+  const lateNotice = actionNotes.filter(n => n.daysPastDue > 0 && n.daysPastDue <= 30);
+  const demandLetter = actionNotes.filter(n => n.daysPastDue > 30);
+  const totalPastDueBal = actionNotes.reduce((s, n) => s + n.currentBalance, 0);
+
+  document.getElementById('collectBadge').textContent = actionNotes.length;
+  document.getElementById('collectKpi').innerHTML = [
+    {label: 'Total Past Due', value: actionNotes.length, cls: actionNotes.length > 0 ? 'red' : 'green'},
+    {label: 'Late Notice (1-30 days)', value: lateNotice.length, cls: lateNotice.length > 0 ? 'orange' : 'green'},
+    {label: 'Demand Letter (30+ days)', value: demandLetter.length, cls: demandLetter.length > 0 ? 'red' : 'green'},
+    {label: 'Past Due Balance', value: fmt(totalPastDueBal), cls: 'red'}
+  ].map(k => '<div class="kpi"><div class="label">' + k.label + '</div><div class="value ' + k.cls + '">' + k.value + '</div></div>').join('');
+
+  document.getElementById('collectBody').innerHTML = actionNotes
+    .sort((a, b) => b.daysPastDue - a.daysPastDue)
+    .map(n => {
+      let action = '';
+      if (n.daysPastDue > 30) action = '<span style="color:#e74c3c;font-weight:600;">Coordinate demand letter with Ty</span>';
+      else if (n.daysPastDue > 15) action = '<span style="color:#e67e22;font-weight:600;">Mail late notice</span>';
+      else action = '<span style="color:#f1c40f;">Monitor -- approaching late notice threshold</span>';
+      return '<tr class="action-needed">' +
+        '<td>' + n.address + '</td>' +
+        '<td>' + n.borrower.substring(0, 40) + '</td>' +
+        '<td class="num" style="color:' + (n.daysPastDue > 30 ? '#e74c3c' : '#e67e22') + ';font-weight:600;">' + n.daysPastDue + '</td>' +
+        '<td><span class="status ' + statusClass(n.status) + '">' + n.status + '</span></td>' +
+        '<td>' + action + '</td>' +
+        '<td class="num">' + fmt(n.currentBalance) + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+// ========== INSURANCE ==========
+// Insurance data placeholder -- update this object with actual expiration dates
+// Format: { "note id": "YYYY-MM-DD" } or null for unknown
+const INSURANCE = {};
+
+function renderInsurance() {
+  const statuses = NOTES.map(n => {
+    const exp = INSURANCE[n.id];
+    if (!exp) return { ...n, insStatus: 'unknown', insDate: null, insLabel: 'No data on file' };
+    const expDate = new Date(exp);
+    const daysUntil = Math.floor((expDate - TODAY) / (1000*60*60*24));
+    if (daysUntil < 0) return { ...n, insStatus: 'lapsed', insDate: exp, insLabel: 'Lapsed ' + Math.abs(daysUntil) + ' days ago' };
+    if (daysUntil <= 30) return { ...n, insStatus: 'expiring', insDate: exp, insLabel: 'Expires in ' + daysUntil + ' days' };
+    return { ...n, insStatus: 'valid', insDate: exp, insLabel: 'Valid through ' + fmtDate(exp) };
+  });
+
+  const valid = statuses.filter(s => s.insStatus === 'valid').length;
+  const expiring = statuses.filter(s => s.insStatus === 'expiring').length;
+  const lapsed = statuses.filter(s => s.insStatus === 'lapsed').length;
+  const unknown = statuses.filter(s => s.insStatus === 'unknown').length;
+
+  document.getElementById('insKpi').innerHTML = [
+    {label: 'Valid', value: valid, cls: 'green'},
+    {label: 'Expiring Soon', value: expiring, cls: 'yellow'},
+    {label: 'Lapsed', value: lapsed, cls: lapsed > 0 ? 'red' : 'green'},
+    {label: 'Unknown', value: unknown, cls: unknown > 0 ? 'orange' : ''}
+  ].map(k => '<div class="kpi"><div class="label">' + k.label + '</div><div class="value ' + k.cls + '">' + k.value + '</div></div>').join('');
+
+  const filterVal = document.getElementById('filterInsStatus').value;
+  const filtered = filterVal === 'all' ? statuses : statuses.filter(s => s.insStatus === filterVal);
+
+  document.getElementById('insGrid').innerHTML = filtered.map(s =>
+    '<div class="ins-card">' +
+    '<div class="ins-addr">' + s.address + '</div>' +
+    '<div class="ins-borrower">' + s.borrower.substring(0, 45) + '</div>' +
+    '<div class="ins-status"><span class="ins-dot ' + s.insStatus + '"></span><span class="ins-label">' + s.insLabel + '</span></div>' +
+    (s.insStatus === 'lapsed' && Math.abs(Math.floor((new Date(s.insDate) - TODAY)/(1000*60*60*24))) > 30 ? '<div style="margin-top:8px;color:#e74c3c;font-size:12px;font-weight:600;">Coordinate demand letter with Ty</div>' : '') +
+    '</div>'
+  ).join('');
+}
+document.getElementById('filterInsStatus').addEventListener('change', renderInsurance);
+
+// ========== CASH FLOW ==========
+function renderCashFlow() {
+  const totalMonthly = NOTES.reduce((s, n) => s + n.monthlyPmt, 0);
+  const annualExpected = totalMonthly * 12;
+  const totalBal = NOTES.reduce((s, n) => s + n.currentBalance, 0);
+
+  // Monthly expected for next 12 months (accounting for balloons)
+  const months = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(TODAY);
+    d.setMonth(d.getMonth() + i);
+    const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    let expected = 0;
+    let balloonAmt = 0;
+    NOTES.forEach(n => {
+      const bd = new Date(n.balloonDate);
+      if (bd.getFullYear() === d.getFullYear() && bd.getMonth() === d.getMonth()) {
+        balloonAmt += n.currentBalance;
+      } else if (bd > d) {
+        expected += n.monthlyPmt;
+      }
+    });
+    months.push({ label, expected, balloon: balloonAmt });
+  }
+
+  document.getElementById('cfKpi').innerHTML = [
+    {label: 'Monthly Collections', value: fmt(totalMonthly), cls: ''},
+    {label: 'Annual Expected', value: fmt(annualExpected), cls: ''},
+    {label: 'Total Outstanding', value: fmt(totalBal), cls: ''},
+    {label: 'Active Notes', value: NOTES.length, cls: ''}
+  ].map(k => '<div class="kpi"><div class="label">' + k.label + '</div><div class="value ' + k.cls + '">' + k.value + '</div></div>').join('');
+
+  new Chart(document.getElementById('cfChart'), {
+    type: 'bar',
+    data: {
+      labels: months.map(m => m.label),
+      datasets: [
+        { label: 'Monthly Payments', data: months.map(m => m.expected), backgroundColor: '#2ecc71', borderRadius: 4 },
+        { label: 'Balloon Payoffs', data: months.map(m => m.balloon), backgroundColor: '#c9952b', borderRadius: 4 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8890a4' } } }, scales: { y: { stacked: false, ticks: { color: '#8890a4', callback: v => '$' + (v/1000).toFixed(0) + 'K' }, grid: { color: '#2a2d3e' } }, x: { ticks: { color: '#8890a4' }, grid: { display: false } } } }
+  });
+
+  // Balloon payoffs by year
+  const balloonYears = {};
+  NOTES.forEach(n => {
+    const y = new Date(n.balloonDate).getFullYear();
+    balloonYears[y] = (balloonYears[y] || 0) + n.currentBalance;
+  });
+  const yKeys = Object.keys(balloonYears).sort();
+  new Chart(document.getElementById('balloonPayoffChart'), {
+    type: 'bar',
+    data: { labels: yKeys, datasets: [{ label: 'Balloon Balance', data: yKeys.map(k => balloonYears[k]), backgroundColor: '#3498db', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8890a4', callback: v => '$' + (v/1000000).toFixed(1) + 'MM' }, grid: { color: '#2a2d3e' } }, x: { ticks: { color: '#8890a4' }, grid: { display: false } } } }
+  });
+
+  // Balloon table
+  const sorted = [...NOTES].sort((a, b) => new Date(a.balloonDate) - new Date(b.balloonDate));
+  document.getElementById('balloonBody').innerHTML = sorted.map(n => {
+    const bd = new Date(n.balloonDate);
+    const monthsLeft = Math.round((bd - TODAY) / (1000*60*60*24*30.44));
+    const warn = monthsLeft <= 12;
+    return '<tr>' +
+      '<td>' + n.address + '</td>' +
+      '<td>' + n.borrower.substring(0, 35) + '</td>' +
+      '<td' + (warn ? ' class="balloon-warn"' : '') + '>' + fmtDate(n.balloonDate) + '</td>' +
+      '<td class="num"' + (warn ? ' style="color:#e67e22;font-weight:600;"' : '') + '>' + monthsLeft + '</td>' +
+      '<td class="num">' + fmt(n.currentBalance) + '</td>' +
+      '<td class="num">' + fmt(n.monthlyPmt) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// ========== NOTE DETAIL MODAL ==========
+window.showDetail = function(id) {
+  const n = NOTES.find(x => x.id === id);
+  if (!n) return;
+  const modal = document.getElementById('noteModal');
+  modal.innerHTML =
+    '<div class="modal-header"><div><h2>' + n.address + '</h2><div class="modal-sub">' + n.borrower + ' | Closing #' + n.closing + '</div></div><div class="close-btn" onclick="document.getElementById(\'modalOverlay\').classList.remove(\'show\')">&times;</div></div>' +
+    '<div class="detail-grid">' +
+    '<div class="detail-item"><div class="dl">Loan Amount</div><div class="dv">' + fmt(n.loanAmt) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Interest Rate</div><div class="dv">' + fmtPct(n.rate) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Monthly Payment</div><div class="dv">' + fmt(n.monthlyPmt) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Current Balance</div><div class="dv">' + fmt(n.currentBalance) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Begin Date</div><div class="dv">' + fmtDate(n.beginDate) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Balloon Date</div><div class="dv">' + fmtDate(n.balloonDate) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Last Payment</div><div class="dv">' + fmtDate(n.lastPmtDate) + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Days Past Due</div><div class="dv" style="color:' + (n.daysPastDue > 30 ? '#e74c3c' : n.daysPastDue > 0 ? '#e67e22' : '#2ecc71') + '">' + n.daysPastDue + '</div></div>' +
+    '<div class="detail-item"><div class="dl">Status</div><div class="dv"><span class="status ' + statusClass(n.status) + '">' + n.status + '</span></div></div>' +
+    '</div>' +
+    '<h3 style="color:#fff;margin-bottom:10px;">Recent Payments</h3>' +
+    '<table><thead><tr><th>Date</th><th>Payment</th><th>Interest</th><th>Principal</th><th>Balance</th></tr></thead><tbody>' +
+    n.payments.map(p =>
+      '<tr><td>' + fmtDate(p.date) + '</td><td class="num">' + fmt(p.payment) + '</td><td class="num">' + fmt(p.interest) + '</td><td class="num">' + fmt(p.principal) + '</td><td class="num">' + (p.balance != null ? fmt(p.balance) : '--') + '</td></tr>'
+    ).join('') +
+    '</tbody></table>';
+  document.getElementById('modalOverlay').classList.add('show');
+};
+
+document.getElementById('modalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('show');
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('modalOverlay').classList.remove('show'); });
+
+// ========== INIT ==========
+renderOverview();
+renderPayments();
+renderCollections();
+renderInsurance();
+renderCashFlow();
+</script>
+</body>
+</html>
