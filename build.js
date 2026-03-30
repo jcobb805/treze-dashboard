@@ -319,7 +319,6 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 <div class="header">
   <div>
     <h1>Treze Alcove <span>Loan Servicing</span></h1>
-    <div class="subtitle">Preze Enterprises -- Notes Receivable Portfolio</div>
   </div>
   <div class="hdr-right">
     <div class="user-sel">
