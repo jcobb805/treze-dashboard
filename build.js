@@ -475,7 +475,7 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 <script>
 const NOTES = ${dataJSON};
 const TODAY = new Date('${todayStr}');
-const API_URL = ''; // Set after deploying Apps Script
+const API_URL = 'https://script.google.com/macros/s/AKfycby7VS75jgpKKmq_SOzGq05v6J34wn_yMClm34h-bPAEolDOgGayAV-o0YZQVfVcw4a_/exec';
 
 // ═══════ STATE ═══════
 let chartFilter = null;
