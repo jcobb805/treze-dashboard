@@ -1342,8 +1342,8 @@ window.renderAnalysis = function() {
   rows.forEach((r, i) => { pv10 += r.netCf / Math.pow(monthlyDiscount, i + 1); });
   const totalPrincipalPaid = FUB.balanceAsOf - fubBal;
   document.getElementById('analysisKpi').innerHTML = [
-    {label:'Total Net Cash Flow',value:'$'+Math.round(totalNetCf/1000).toLocaleString()+'K',cls:totalNetCf>=0?'green':'red'},
-    {label:'PV10 (Net Cash Flow)',value:'$'+Math.round(pv10/1000).toLocaleString()+'K',cls:pv10>=0?'green':'red'},
+    {label:'Total Net Cash Flow',value:'$'+(totalNetCf/1000000).toFixed(1)+'MM',cls:totalNetCf>=0?'green':'red'},
+    {label:'PV10 (Net Cash Flow)',value:'$'+(pv10/1000000).toFixed(1)+'MM',cls:pv10>=0?'green':'red'},
     {label:'Avg Monthly Net CF',value:'$'+Math.round(avgNetCf).toLocaleString(),cls:avgNetCf>=0?'green':'red'},
     {label:'Balloon Payoffs (2030)',value:'$'+(totalBalloonIncome/1000000).toFixed(1)+'MM',cls:'green'},
     {label:'Total Interest to FUB',value:'$'+Math.round(totalInterest/1000).toLocaleString()+'K',cls:'red'},
