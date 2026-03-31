@@ -1251,11 +1251,17 @@ window.generateLateNotice = function(noteId) {
 
   let y = buildLetterHeader(doc);
 
-  // Date (right aligned)
+  // Letter date: 15 days after due date, skip to Monday if weekend
+  const dueDate15 = new Date(n.nextDueDate + 'T00:00:00');
+  dueDate15.setDate(dueDate15.getDate() + 15);
+  const dow = dueDate15.getDay();
+  if (dow === 0) dueDate15.setDate(dueDate15.getDate() + 1); // Sun -> Mon
+  if (dow === 6) dueDate15.setDate(dueDate15.getDate() + 2); // Sat -> Mon
+  const letterDateLong = dueDate15.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  const todayLong = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  doc.text(todayLong, 190, y, { align: 'right' });
+  doc.text(letterDateLong, 190, y, { align: 'right' });
   y += 14;
 
   // Recipient
@@ -1295,8 +1301,8 @@ window.generateLateNotice = function(noteId) {
   doc.setFont('helvetica', 'normal');
   y += 6;
 
-  // Payment deadline — end of current month
-  const endOfMonth = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0);
+  // Payment deadline — end of the month the letter is dated
+  const endOfMonth = new Date(dueDate15.getFullYear(), dueDate15.getMonth() + 1, 0);
   const deadline = endOfMonth.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   doc.text('You may make this payment with a check, wire, or ACH. Payment is due no later than ' + deadline + ', or your loan will be in default and additional fees will be incurred.', 20, y, { maxWidth: 170 });
   y += 18;
