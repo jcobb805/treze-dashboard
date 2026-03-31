@@ -238,8 +238,7 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
   <div class="tab-content" id="tab-cashflow">
     <div class="kpi-row" id="cfKpi"></div>
     <div class="chart-row">
-      <div class="chart-card"><h3>Expected Monthly Collections</h3><div class="chart-wrap"><canvas id="cfChart"></canvas></div></div>
-      <div class="chart-card"><h3>Balloon Payoffs by Year</h3><div class="chart-wrap"><canvas id="balloonPayoffChart"></canvas></div></div>
+      <div class="chart-card" style="flex:1"><h3>Expected Monthly Collections</h3><div class="chart-wrap"><canvas id="cfChart"></canvas></div></div>
     </div>
     <h3 style="color:#fff;margin-bottom:15px">Upcoming Balloon Maturities</h3>
     <div class="table-wrap">
@@ -998,14 +997,6 @@ function renderCashFlow() {
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8890a4'}}},scales:{y:{ticks:{color:'#8890a4',callback:v=>fmtK(v)},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4'},grid:{display:false}}}}
   }));
 
-  const balloonYears={};
-  NOTES.forEach(n=>{const y=new Date(n.balloonDate).getFullYear();balloonYears[y]=(balloonYears[y]||0)+n.currentBalance});
-  const yKeys=Object.keys(balloonYears).sort();
-  cfCharts.push(new Chart(document.getElementById('balloonPayoffChart'),{
-    type:'bar',
-    data:{labels:yKeys,datasets:[{label:'Balloon Balance',data:yKeys.map(k=>balloonYears[k]),backgroundColor:'#3498db',borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},scales:{y:{ticks:{color:'#8890a4',callback:v=>fmtMM(v)},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4'},grid:{display:false}}}}
-  }));
 
   const sorted=[...NOTES].sort((a,b)=>new Date(a.balloonDate)-new Date(b.balloonDate));
   document.getElementById('balloonBody').innerHTML = sorted.map(n=>{
