@@ -1041,10 +1041,8 @@ window.generateLateNotice = function(noteId) {
   // Payment deadline — end of current month
   const endOfMonth = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0);
   const deadline = endOfMonth.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  doc.text('You may make this payment with a check, wire, or ACH. Payment is due no later than ' + deadline + ',', 20, y, { maxWidth: 170 });
-  y += 6;
-  doc.text('or your loan will be in default and additional fees will be incurred.', 20, y, { maxWidth: 170 });
-  y += 12;
+  doc.text('You may make this payment with a check, wire, or ACH. Payment is due no later than ' + deadline + ', or your loan will be in default and additional fees will be incurred.', 20, y, { maxWidth: 170 });
+  y += 18;
 
   // Payment address
   doc.text('Please forward payment to the following address:', 20, y);
