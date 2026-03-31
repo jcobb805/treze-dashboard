@@ -1264,9 +1264,13 @@ window.renderAnalysis = function() {
   let totalDebtService = 0;
   let totalInterest = 0;
 
-  for (let m = 0; m < 49; m++) { // ~4 years
+  // Extend projection through last N/R balloon date (past FUB maturity)
+  const lastBalloon = NOTES.reduce((max, n) => { const d = new Date(n.balloonDate); return d > max ? d : max; }, maturity);
+  const projEnd = new Date(lastBalloon.getFullYear(), lastBalloon.getMonth(), 1);
+
+  for (let m = 0; m < 72; m++) {
     const monthDate = new Date(startDate.getFullYear(), startDate.getMonth() + m, 1);
-    if (monthDate > maturity) break;
+    if (monthDate > projEnd) break;
     const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
     const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
@@ -1284,16 +1288,19 @@ window.renderAnalysis = function() {
     });
     const balloonIncome = balloonNotes.reduce((s, n) => s + n.currentBalance, 0);
 
-    // FUB interest calc
-    const rate = monthDate < fixedEnd ? FUB.fixedRate : Math.max(floatingRate, FUB.floor);
-    const monthlyInterest = fubBal * rate / 12;
-    const basePrincipal = Math.max(0, FUB.monthlyPmt - monthlyInterest);
-    const totalPrincipal = basePrincipal + extraPaydown;
-    const actualPrincipal = Math.min(totalPrincipal, fubBal);
-    const actualExtra = Math.min(extraPaydown, Math.max(0, fubBal - basePrincipal));
-    // FUB balloon payoff in maturity month (remaining balance due)
-    const isMaturityMonth = monthDate.getFullYear() === maturity.getFullYear() && monthDate.getMonth() === maturity.getMonth();
-    const fubBalloon = isMaturityMonth ? Math.max(0, fubBal - actualPrincipal) : 0;
+    // FUB debt service (zero after maturity when loan is paid off)
+    let monthlyInterest = 0, basePrincipal = 0, actualPrincipal = 0, actualExtra = 0, fubBalloon = 0;
+    if (fubBal > 0) {
+      const rate = monthDate < fixedEnd ? FUB.fixedRate : Math.max(floatingRate, FUB.floor);
+      monthlyInterest = fubBal * rate / 12;
+      basePrincipal = Math.max(0, FUB.monthlyPmt - monthlyInterest);
+      const totalPrincipal = basePrincipal + extraPaydown;
+      actualPrincipal = Math.min(totalPrincipal, fubBal);
+      actualExtra = Math.min(extraPaydown, Math.max(0, fubBal - basePrincipal));
+      // FUB balloon payoff in maturity month (remaining balance due)
+      const isMaturityMonth = monthDate.getFullYear() === maturity.getFullYear() && monthDate.getMonth() === maturity.getMonth();
+      fubBalloon = isMaturityMonth ? Math.max(0, fubBal - actualPrincipal) : 0;
+    }
     const totalDs = monthlyInterest + actualPrincipal + fubBalloon;
     const netCf = nrIncome + balloonIncome - monthlyInterest - basePrincipal - actualExtra - fubBalloon;
 
