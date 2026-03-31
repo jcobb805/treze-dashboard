@@ -1380,9 +1380,12 @@ window.renderAnalysis = function() {
     const mi = baseBal * rate / 12;
     baselineInterest += mi;
     const bp = Math.max(0, FUB.monthlyPmt - mi);
-    baseBal = Math.max(0, baseBal - bp);
+    // Include FUB balloon payoff at maturity (same as main calc)
+    const isMatMonth = monthDate.getFullYear() === maturity.getFullYear() && monthDate.getMonth() === maturity.getMonth();
+    const baseBalloon = isMatMonth ? Math.max(0, baseBal - bp) : 0;
+    baseBal = Math.max(0, baseBal - bp - baseBalloon);
   }
-  const interestSaved = baselineInterest - totalInterest;
+  const interestSaved = Math.max(0, baselineInterest - totalInterest);
 
   document.getElementById('analysisKpi').innerHTML = [
     {label:'Total Net Cash Flow',value:'$'+(totalNetCf/1000000).toFixed(1)+'MM',cls:totalNetCf>=0?'green':'red'},
@@ -1390,7 +1393,7 @@ window.renderAnalysis = function() {
     {label:'Avg Monthly Net CF',value:'$'+Math.round(avgNetCf).toLocaleString(),cls:avgNetCf>=0?'green':'red'},
     {label:'Balloon Payoffs (2030)',value:'$'+(totalBalloonIncome/1000000).toFixed(1)+'MM',cls:'green'},
     {label:'Total Interest to FUB',value:'$'+Math.round(totalInterest/1000).toLocaleString()+'K',cls:'red'},
-    {label:'Interest Saved w/ Paydown',value:interestSaved>0?'$'+Math.round(interestSaved/1000).toLocaleString()+'K':'$0',cls:interestSaved>0?'green':''}
+    {label:'Interest Saved w/ Additional Principal Paydown',value:interestSaved>0?'$'+Math.round(interestSaved/1000).toLocaleString()+'K':'$0',cls:interestSaved>0?'green':''}
   ].map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
 
   // Net CF chart
