@@ -212,14 +212,15 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 
   <div class="tab-content" id="tab-collections">
     <div class="kpi-row" id="collectKpi"></div>
-    <div class="btn-group">
-      <button class="btn btn-gold" onclick="window.generateAllLateNotices()">Generate All Late Notices (PDF)</button>
-      <button class="btn btn-red" onclick="window.generateAllDemandLetters()">Generate All Demand Letters (PDF)</button>
+    <div class="btn-group" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <button class="btn btn-gold" onclick="window.generateSelectedLateNotices()">Generate Late Notice (PDF)</button>
+      <button class="btn btn-red" onclick="window.generateSelectedDemandLetters()">Generate Demand Letter (PDF)</button>
+      <span id="collectSelCount" style="font-size:12px;color:#8890a4;margin-left:8px"></span>
     </div>
     <h3 style="color:#fff;margin-bottom:15px">Action Items</h3>
     <div class="table-wrap">
       <table><thead><tr>
-        <th>Address</th><th>Borrower</th><th>Days Past Due</th><th>Status</th><th>Collection Status</th><th>Action</th><th>Notes</th><th>Balance</th>
+        <th style="width:36px"><input type="checkbox" id="collectSelectAll" onchange="window.toggleCollectAll(this.checked)" title="Select all"></th><th>Address</th><th>Borrower</th><th>Days Past Due</th><th>Status</th><th>Collection Status</th><th>Action</th><th>Notes</th><th>Balance</th>
       </tr></thead><tbody id="collectBody"></tbody></table>
     </div>
   </div>
@@ -523,6 +524,7 @@ function renderCollections() {
       }
 
       return '<tr class="action-needed" onclick="window.showAmortSchedule(\''+nid+'\')">'+
+        '<td onclick="event.stopPropagation()"><input type="checkbox" class="collect-check" data-note-id="'+n.id.replace(/"/g,'&quot;')+'" onchange="window.updateCollectSelCount()"></td>'+
         '<td>'+n.address+'</td>'+
         '<td>'+n.borrower.substring(0,30)+'</td>'+
         '<td class="num" style="color:'+(n.daysPastDue>30?'#e74c3c':'#e67e22')+';font-weight:600">'+n.daysPastDue+'</td>'+
@@ -800,19 +802,50 @@ window.generateDemandLetter = function(noteId) {
   postAPI({ action: 'log_action', updatedBy: getUser(), actionType: 'demand_letter_generated', noteId: n.id, details: 'Arrearage: ' + fmtMoney(totalArrearage) });
 };
 
-// Batch PDF generation
-window.generateAllLateNotices = function() {
-  const lateNotes = NOTES.filter(n => n.daysPastDue > 0 && n.daysPastDue <= 30);
-  if (lateNotes.length === 0) { showToast('No notes qualify for late notice', 'error'); return; }
-  lateNotes.forEach(n => window.generateLateNotice(n.id));
-  showToast('Generated ' + lateNotes.length + ' late notice(s)', 'saved', 3000);
+// Checkbox helpers
+function getCheckedNoteIds() {
+  return Array.from(document.querySelectorAll('.collect-check:checked')).map(cb => cb.dataset.noteId);
+}
+
+window.toggleCollectAll = function(checked) {
+  document.querySelectorAll('.collect-check').forEach(cb => { cb.checked = checked; });
+  window.updateCollectSelCount();
 };
 
-window.generateAllDemandLetters = function() {
-  const demandNotes = NOTES.filter(n => n.daysPastDue > 30);
-  if (demandNotes.length === 0) { showToast('No notes qualify for demand letter', 'error'); return; }
-  demandNotes.forEach(n => window.generateDemandLetter(n.id));
-  showToast('Generated ' + demandNotes.length + ' demand letter(s)', 'saved', 3000);
+window.updateCollectSelCount = function() {
+  const checked = document.querySelectorAll('.collect-check:checked').length;
+  const total = document.querySelectorAll('.collect-check').length;
+  const el = document.getElementById('collectSelCount');
+  el.textContent = checked > 0 ? checked + ' of ' + total + ' selected' : 'Check rows to select, or generates all qualifying';
+  document.getElementById('collectSelectAll').checked = checked === total && total > 0;
+};
+
+window.generateSelectedLateNotices = function() {
+  const checkedIds = getCheckedNoteIds();
+  let targets;
+  if (checkedIds.length > 0) {
+    targets = NOTES.filter(n => checkedIds.includes(n.id) && n.daysPastDue > 0 && n.daysPastDue <= 30);
+    if (targets.length === 0) { showToast('None of the selected notes qualify for late notice (1-30 days past due)', 'error'); return; }
+  } else {
+    targets = NOTES.filter(n => n.daysPastDue > 0 && n.daysPastDue <= 30);
+    if (targets.length === 0) { showToast('No notes qualify for late notice', 'error'); return; }
+  }
+  targets.forEach(n => window.generateLateNotice(n.id));
+  showToast('Generated ' + targets.length + ' late notice(s)', 'saved', 3000);
+};
+
+window.generateSelectedDemandLetters = function() {
+  const checkedIds = getCheckedNoteIds();
+  let targets;
+  if (checkedIds.length > 0) {
+    targets = NOTES.filter(n => checkedIds.includes(n.id) && n.daysPastDue > 30);
+    if (targets.length === 0) { showToast('None of the selected notes qualify for demand letter (30+ days past due)', 'error'); return; }
+  } else {
+    targets = NOTES.filter(n => n.daysPastDue > 30);
+    if (targets.length === 0) { showToast('No notes qualify for demand letter', 'error'); return; }
+  }
+  targets.forEach(n => window.generateDemandLetter(n.id));
+  showToast('Generated ' + targets.length + ' demand letter(s)', 'saved', 3000);
 };
 
 // ═══════ INSURANCE TAB ═══════
