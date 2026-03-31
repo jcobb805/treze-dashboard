@@ -1370,14 +1370,27 @@ window.renderAnalysis = function() {
   const monthlyDiscount = Math.pow(1 + 0.10, 1/12);
   let pv10 = 0;
   rows.forEach((r, i) => { pv10 += r.netCf / Math.pow(monthlyDiscount, i + 1); });
-  const totalPrincipalPaid = FUB.balanceAsOf - fubBal;
+  // Compute baseline interest (no extra paydown) to show savings
+  let baselineInterest = 0;
+  let baseBal = FUB.balanceAsOf;
+  for (let m = 0; m < rows.length; m++) {
+    const monthDate = new Date(startDate.getFullYear(), startDate.getMonth() + m, 1);
+    if (baseBal <= 0) break;
+    const rate = monthDate < fixedEnd ? FUB.fixedRate : Math.max(floatingRate, FUB.floor);
+    const mi = baseBal * rate / 12;
+    baselineInterest += mi;
+    const bp = Math.max(0, FUB.monthlyPmt - mi);
+    baseBal = Math.max(0, baseBal - bp);
+  }
+  const interestSaved = baselineInterest - totalInterest;
+
   document.getElementById('analysisKpi').innerHTML = [
     {label:'Total Net Cash Flow',value:'$'+(totalNetCf/1000000).toFixed(1)+'MM',cls:totalNetCf>=0?'green':'red'},
     {label:'PV10 (Net Cash Flow)',value:'$'+(pv10/1000000).toFixed(1)+'MM',cls:pv10>=0?'green':'red'},
     {label:'Avg Monthly Net CF',value:'$'+Math.round(avgNetCf).toLocaleString(),cls:avgNetCf>=0?'green':'red'},
     {label:'Balloon Payoffs (2030)',value:'$'+(totalBalloonIncome/1000000).toFixed(1)+'MM',cls:'green'},
     {label:'Total Interest to FUB',value:'$'+Math.round(totalInterest/1000).toLocaleString()+'K',cls:'red'},
-    {label:'FUB Balance at Maturity',value:'$'+Math.round(fubBal).toLocaleString(),cls:fubBal>0?'red':'green'}
+    {label:'Interest Saved w/ Paydown',value:interestSaved>0?'$'+Math.round(interestSaved/1000).toLocaleString()+'K':'$0',cls:interestSaved>0?'green':''}
   ].map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
 
   // Net CF chart
