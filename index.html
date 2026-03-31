@@ -275,7 +275,7 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
     <h3 style="color:#fff;margin:20px 0 15px">Monthly Projection</h3>
     <div class="table-wrap" style="max-height:500px;overflow-y:auto">
       <table><thead><tr>
-        <th>Month</th><th>Active Notes</th><th>N/R Income</th><th>FUB Interest</th><th>FUB Principal</th><th>Extra Paydown</th><th>Total Debt Service</th><th>Net Cash Flow</th><th>FUB Balance</th>
+        <th>Month</th><th>Active Notes</th><th>N/R Income</th><th>Balloon Payoffs</th><th>FUB Interest</th><th>FUB Principal</th><th>Extra Paydown</th><th>Total Debt Service</th><th>Net Cash Flow</th><th>FUB Balance</th>
       </tr></thead><tbody id="analysisBody"></tbody></table>
     </div>
   </div>
@@ -1277,6 +1277,13 @@ window.renderAnalysis = function() {
     });
     const nrIncome = activeNotes.reduce((s, n) => s + n.monthlyPmt, 0);
 
+    // Balloon payoffs received this month
+    const balloonNotes = NOTES.filter(n => {
+      const balloon = new Date(n.balloonDate);
+      return balloon.getFullYear() === monthDate.getFullYear() && balloon.getMonth() === monthDate.getMonth();
+    });
+    const balloonIncome = balloonNotes.reduce((s, n) => s + n.currentBalance, 0);
+
     // FUB interest calc
     const rate = monthDate < fixedEnd ? FUB.fixedRate : Math.max(floatingRate, FUB.floor);
     const monthlyInterest = fubBal * rate / 12;
@@ -1285,16 +1292,18 @@ window.renderAnalysis = function() {
     const actualPrincipal = Math.min(totalPrincipal, fubBal);
     const actualExtra = Math.min(extraPaydown, Math.max(0, fubBal - basePrincipal));
     const totalDs = monthlyInterest + actualPrincipal;
-    const netCf = nrIncome - monthlyInterest - basePrincipal - actualExtra;
+    const netCf = nrIncome + balloonIncome - monthlyInterest - basePrincipal - actualExtra;
 
     totalNetCf += netCf;
-    totalNrIncome += nrIncome;
+    totalNrIncome += nrIncome + balloonIncome;
     totalDebtService += totalDs;
     totalInterest += monthlyInterest;
 
     rows.push({
       label: monthLabel,
       activeCount: activeNotes.length,
+      balloonCount: balloonNotes.length,
+      balloonIncome,
       nrIncome,
       fubInterest: monthlyInterest,
       fubPrincipal: basePrincipal,
@@ -1306,7 +1315,7 @@ window.renderAnalysis = function() {
 
     labels.push(monthLabel);
     netCfData.push(Math.round(netCf));
-    nrIncomeData.push(Math.round(nrIncome));
+    nrIncomeData.push(Math.round(nrIncome + balloonIncome));
     debtServiceData.push(Math.round(-totalDs));
     fubBalData.push(Math.round(fubBal));
 
@@ -1314,14 +1323,20 @@ window.renderAnalysis = function() {
   }
 
   // KPIs
+  const totalBalloonIncome = rows.reduce((s,r) => s + r.balloonIncome, 0);
   const avgNetCf = totalNetCf / rows.length;
+  // PV10: discount each month's net CF at 10% annual rate
+  const monthlyDiscount = Math.pow(1 + 0.10, 1/12);
+  let pv10 = 0;
+  rows.forEach((r, i) => { pv10 += r.netCf / Math.pow(monthlyDiscount, i + 1); });
   const totalPrincipalPaid = FUB.balanceAsOf - fubBal;
   document.getElementById('analysisKpi').innerHTML = [
-    {label:'Avg Monthly Net Cash Flow',value:'$'+Math.round(avgNetCf).toLocaleString(),cls:avgNetCf>=0?'green':'red'},
-    {label:'Total N/R Income (Proj.)',value:'$'+Math.round(totalNrIncome/1000).toLocaleString()+'K',cls:'green'},
+    {label:'Total Net Cash Flow',value:'$'+Math.round(totalNetCf/1000).toLocaleString()+'K',cls:totalNetCf>=0?'green':'red'},
+    {label:'PV10 (Net Cash Flow)',value:'$'+Math.round(pv10/1000).toLocaleString()+'K',cls:pv10>=0?'green':'red'},
+    {label:'Avg Monthly Net CF',value:'$'+Math.round(avgNetCf).toLocaleString(),cls:avgNetCf>=0?'green':'red'},
+    {label:'Balloon Payoffs (2030)',value:'$'+(totalBalloonIncome/1000000).toFixed(1)+'MM',cls:'green'},
     {label:'Total Interest to FUB',value:'$'+Math.round(totalInterest/1000).toLocaleString()+'K',cls:'red'},
-    {label:'FUB Balance at Maturity',value:'$'+Math.round(fubBal).toLocaleString(),cls:fubBal>0?'red':'green'},
-    {label:'Total Principal Paid',value:'$'+Math.round(totalPrincipalPaid/1000).toLocaleString()+'K',cls:'green'}
+    {label:'FUB Balance at Maturity',value:'$'+Math.round(fubBal).toLocaleString(),cls:fubBal>0?'red':'green'}
   ].map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
 
   // Net CF chart
@@ -1380,8 +1395,9 @@ window.renderAnalysis = function() {
     const rateLabel = new Date(2026, 2 + i, 1) < new Date(2027, 3, 18) ? '(fixed ' + (FUB.fixedRate*100).toFixed(2) + '%)' : '(float ' + (Math.max(floatingRate, FUB.floor)*100).toFixed(2) + '%)';
     return '<tr>'+
       '<td>'+r.label+' <span style="color:#555;font-size:10px">'+rateLabel+'</span></td>'+
-      '<td class="num">'+r.activeCount+'</td>'+
+      '<td class="num">'+r.activeCount+(r.balloonCount>0?' <span style="color:#c9952b;font-size:10px">('+r.balloonCount+' balloon)</span>':'')+'</td>'+
       '<td class="num" style="color:#2ecc71">'+fmt(r.nrIncome)+'</td>'+
+      '<td class="num" style="color:#c9952b;font-weight:'+(r.balloonIncome>0?'600':'normal')+'">'+(r.balloonIncome>0?fmt(r.balloonIncome):'-')+'</td>'+
       '<td class="num" style="color:#e74c3c">'+fmt(r.fubInterest)+'</td>'+
       '<td class="num">'+fmt(r.fubPrincipal)+'</td>'+
       '<td class="num" style="color:#c9952b">'+(r.extraPd>0?fmt(r.extraPd):'-')+'</td>'+
