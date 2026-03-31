@@ -2,11 +2,14 @@ const ExcelJS = require('exceljs');
 const fs = require('fs');
 const path = require('path');
 
-const INPUT = path.join(__dirname, '..', 'OneDrive', 'Treze Alcove', 'Treze Alcove - Preze Enterprises - Amortization Schedule.xlsx');
+const BASE = path.join(__dirname, '..', 'OneDrive', 'Treze Alcove');
+const INPUT = path.join(BASE, 'Treze Alcove - Preze Enterprises - Amortization Schedule.xlsx');
+const INS_FILE = path.join(BASE, 'Treze Alcove - Proof of Insurance.xlsx');
+const CONTACT_FILE = path.join(BASE, 'Treze Alcove - Property Contact Info..xlsx');
 const OUTPUT = path.join(__dirname, 'index.html');
 const TODAY = new Date();
+const LATE_FEE_RATE = 0.05;
 
-// Green fill color used to mark collected payments in Excel
 const GREEN_ARGB = 'FF92D050';
 
 function isGreenFill(cell) {
@@ -38,6 +41,8 @@ async function build() {
     const beginDateRaw = getVal(6, 2);
     const monthlyPmt = getVal(8, 2);
     const beginDate = beginDateRaw instanceof Date ? beginDateRaw : new Date(beginDateRaw);
+    const gain = getVal(2, 5);
+    const gpPct = getVal(4, 5);
 
     const headerRow = ws.getRow(10);
     const headers = {};
@@ -45,12 +50,10 @@ async function build() {
       const h = headerRow.getCell(c).value;
       if (h) headers[String(h).toLowerCase().trim()] = c;
     }
-
     const dateCol = headers['date'] || 2;
     const pmtCol = headers['payment'] || 3;
     const interestCol = headers['interest'] || 4;
     const principalCol = headers['principal'] || 5;
-
     let balanceCol = -1;
     for (let c = 1; c <= 15; c++) {
       const h = headerRow.getCell(c).value;
@@ -63,22 +66,17 @@ async function build() {
       const dateCell = ws.getRow(r).getCell(dateCol);
       const dateVal = dateCell.value;
       if (dateVal === null || dateVal === undefined || dateVal === '') continue;
-
       let rawDate = dateVal;
       if (rawDate && typeof rawDate === 'object' && (rawDate.formula || rawDate.sharedFormula)) rawDate = rawDate.result;
       const date = rawDate instanceof Date ? rawDate : new Date(rawDate);
       if (isNaN(date.getTime())) continue;
-
       const pmt = getVal(r, pmtCol) || 0;
       const interest = getVal(r, interestCol) || 0;
       const principal = getVal(r, principalCol) || 0;
       const balance = balanceCol > 0 ? (getVal(r, balanceCol) || 0) : null;
       const month = getVal(r, 1);
-
       if (month === 'Loan' || month === 'loan') continue;
-
       const collected = isGreenFill(dateCell);
-
       const entry = {
         month: typeof month === 'number' ? month : null,
         date: date.toISOString().split('T')[0],
@@ -88,7 +86,6 @@ async function build() {
         balance: typeof balance === 'number' ? Math.round(balance * 100) / 100 : null,
         collected
       };
-
       if (collected) collectedPayments.push(entry);
       else scheduledPayments.push(entry);
     }
@@ -98,19 +95,16 @@ async function build() {
 
     const lastCollected = collectedPayments[collectedPayments.length - 1];
     const lastCollectedDate = new Date(lastCollected.date);
-
     const payoffThreshold = loanAmt * 0.5;
     const payoffCheck = [...collectedPayments, ...scheduledPayments.slice(0, 3)];
     const hasPayoff = payoffCheck.some(p => p.payment > payoffThreshold);
     if (hasPayoff) continue;
-
     const daysSinceLastGreen = Math.floor((TODAY - lastCollectedDate) / (1000 * 60 * 60 * 24));
     if (daysSinceLastGreen > 180) continue;
-    const nextScheduled = scheduledPayments[0];
 
+    const nextScheduled = scheduledPayments[0];
     const balloonDate = new Date(beginDate);
     balloonDate.setMonth(balloonDate.getMonth() + balloonAt);
-
     const nextDueDate = new Date(nextScheduled.date);
     const daysSinceLastPmt = Math.floor((TODAY - lastCollectedDate) / (1000 * 60 * 60 * 24));
     const daysPastDue = Math.max(0, Math.floor((TODAY - nextDueDate) / (1000 * 60 * 60 * 24)));
@@ -130,13 +124,8 @@ async function build() {
       currentBalance = Math.max(0, loanAmt - totalPrincipal);
     }
 
-    // Gain info
-    const gain = getVal(2, 5);
-    const gpPct = getVal(4, 5);
-
     notes.push({
-      id: ws.name,
-      address, closing, borrower, loanAmt, rate, salesPrice,
+      id: ws.name, address, closing, borrower, loanAmt, rate, salesPrice,
       gain: typeof gain === 'number' ? Math.round(gain * 100) / 100 : null,
       gpPct: typeof gpPct === 'number' ? gpPct : null,
       amortMonths, balloonAt,
@@ -156,6 +145,63 @@ async function build() {
 
   const statusOrder = { 'Severely Delinquent': 0, 'Demand Letter': 1, 'Late Notice': 2, 'Past Due': 3, 'Current': 4 };
   notes.sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || (b.daysPastDue - a.daysPastDue));
+
+  // Read insurance
+  const insMap = {};
+  try {
+    const iwb = new ExcelJS.Workbook();
+    await iwb.xlsx.readFile(INS_FILE);
+    const iws = iwb.worksheets[0];
+    for (let r = 2; r <= iws.rowCount; r++) {
+      let addr = iws.getRow(r).getCell(1).value;
+      if (!addr) continue;
+      addr = String(addr).trim();
+      let insured = iws.getRow(r).getCell(2).value;
+      let expDate = iws.getRow(r).getCell(3).value;
+      let insNotes = iws.getRow(r).getCell(4).value;
+      if (expDate instanceof Date) expDate = expDate.toISOString().split('T')[0];
+      insMap[addr] = { insured: insured ? String(insured).trim() : '', expiration: expDate || '', insNotes: insNotes ? String(insNotes).trim() : '' };
+    }
+    console.log(`Loaded ${Object.keys(insMap).length} insurance records`);
+  } catch(e) { console.warn('Could not read insurance file:', e.message); }
+
+  // Read contacts
+  const contactMap = {};
+  try {
+    const cwb = new ExcelJS.Workbook();
+    await cwb.xlsx.readFile(CONTACT_FILE);
+    const cws = cwb.worksheets[0];
+    for (let r = 2; r <= cws.rowCount; r++) {
+      const getC = (col) => {
+        let v = cws.getRow(r).getCell(col).value;
+        if (v && typeof v === 'object' && v.richText) v = v.richText.map(rt => rt.text).join('');
+        if (v && typeof v === 'object' && v.text) v = v.text;
+        return v ? String(v).trim() : '';
+      };
+      const addr = getC(1);
+      if (!addr) continue;
+      contactMap[addr] = { contact: getC(2), ownerName: getC(3), email: getC(4), mailingAddress: getC(5), paymentMethod: getC(6), phone: getC(7) };
+    }
+    console.log(`Loaded ${Object.keys(contactMap).length} contact records`);
+  } catch(e) { console.warn('Could not read contact file:', e.message); }
+
+  // Merge
+  for (const n of notes) {
+    const addrKey = n.address.trim();
+    const ins = insMap[addrKey] || {};
+    n.insured = ins.insured || '';
+    n.insuranceExpiration = ins.expiration || '';
+    n.insuranceNotes = ins.insNotes || '';
+    const ct = contactMap[addrKey] || {};
+    n.contact = ct.contact || '';
+    n.ownerName = ct.ownerName || '';
+    n.email = ct.email || '';
+    n.mailingAddress = ct.mailingAddress || '';
+    n.paymentMethod = ct.paymentMethod || '';
+    n.phone = ct.phone || '';
+    n.lateFee = Math.round(n.monthlyPmt * LATE_FEE_RATE * 100) / 100;
+    n.totalOwed = Math.round((n.monthlyPmt + n.lateFee) * 100) / 100;
+  }
 
   console.log(`Extracted ${notes.length} active notes`);
   notes.forEach(n => console.log(`  ${n.id} | ${n.status} | ${n.daysPastDue} days past due | Bal: $${n.currentBalance.toLocaleString()}`));
@@ -177,13 +223,13 @@ return `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Treze Alcove - Loan Servicing Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"><\/script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#0f1117;color:#e0e0e0;min-height:100vh}
 .header{background:linear-gradient(135deg,#1a1d2e 0%,#252940 100%);padding:18px 30px;border-bottom:2px solid #c9952b;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .header h1{font-size:22px;font-weight:600;color:#fff}
 .header h1 span{color:#c9952b}
-.header .subtitle{font-size:13px;color:#8890a4;margin-top:2px}
 .hdr-right{display:flex;align-items:center;gap:16px}
 .hdr-right .date{font-size:13px;color:#8890a4}
 .user-sel{display:flex;align-items:center;gap:6px}
@@ -248,13 +294,11 @@ tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
 tr.action-needed{background:rgba(231,76,60,.05)}
 .balloon-warn{color:#e67e22;font-weight:600}
 
-/* Editable fields */
 .edit-field{background:#151825;border:1px solid #2a2d3e;border-radius:4px;color:#e0e0e0;padding:4px 8px;font-size:12px;width:100%}
 .edit-field:focus{border-color:#c9952b;outline:none}
 select.edit-field{cursor:pointer}
 textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 
-/* Collection status dropdown */
 .coll-status{padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;border:none;cursor:pointer}
 .coll-status.monitoring{background:rgba(241,196,15,.15);color:#f1c40f}
 .coll-status.late_notice_sent{background:rgba(230,126,34,.15);color:#e67e22}
@@ -263,7 +307,6 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 .coll-status.payment_plan{background:rgba(52,152,219,.15);color:#3498db}
 .coll-status.resolved{background:rgba(46,204,113,.15);color:#2ecc71}
 
-/* Insurance cards */
 .ins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .ins-card{background:#1a1d2e;border-radius:8px;padding:15px;border:1px solid #2a2d3e}
 .ins-card .ins-addr{font-weight:600;color:#fff;font-size:14px}
@@ -275,7 +318,6 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 .ins-card .ins-fields label{font-size:10px;color:#8890a4;text-transform:uppercase}
 .ins-card .ins-warn{margin-top:8px;color:#e74c3c;font-size:12px;font-weight:600}
 
-/* Amortization panel */
 .amort-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.75);z-index:200}
 .amort-overlay.show{display:block}
 .amort-panel{position:fixed;top:0;right:0;width:95vw;max-width:1200px;height:100vh;background:#12141f;border-left:2px solid #c9952b;overflow-y:auto;z-index:201;transform:translateX(100%);transition:transform .3s ease;padding:25px 30px}
@@ -298,6 +340,20 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 .amort-table tr.collected{background:rgba(46,204,113,.06)}
 .amort-table tr.scheduled{color:#8890a4}
 .amort-table tr.divider td{border-top:2px solid #c9952b;font-weight:600;color:#c9952b;font-size:11px;text-transform:uppercase;padding:8px 10px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-gold{background:#c9952b;color:#fff}.btn-gold:hover{background:#d4a73a}
+.btn-red{background:#e74c3c;color:#fff}.btn-red:hover{background:#c0392b}
+.btn-outline{background:transparent;border:1px solid #3a3d50;color:#8890a4}.btn-outline:hover{border-color:#c9952b;color:#c9952b}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-group{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+
+/* Mark collected button in amort table */
+.collect-btn{background:#2ecc71;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600}
+.collect-btn:hover{background:#27ae60}
+.undo-btn{background:transparent;border:1px solid #555;color:#888;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer}
+.undo-btn:hover{border-color:#e74c3c;color:#e74c3c}
 
 /* Toast */
 .toast{position:fixed;bottom:20px;right:20px;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:300;opacity:0;transition:opacity .3s;pointer-events:none}
@@ -374,10 +430,14 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
 
   <div class="tab-content" id="tab-collections">
     <div class="kpi-row" id="collectKpi"></div>
+    <div class="btn-group">
+      <button class="btn btn-gold" onclick="window.generateAllLateNotices()">Generate All Late Notices (PDF)</button>
+      <button class="btn btn-red" onclick="window.generateAllDemandLetters()">Generate All Demand Letters (PDF)</button>
+    </div>
     <h3 style="color:#fff;margin-bottom:15px">Action Items</h3>
     <div class="table-wrap">
       <table><thead><tr>
-        <th>Address</th><th>Borrower</th><th>Days Past Due</th><th>Status</th><th>Collection Status</th><th>Action Required</th><th>Notes</th><th>Balance</th>
+        <th>Address</th><th>Borrower</th><th>Days Past Due</th><th>Status</th><th>Collection Status</th><th>Action</th><th>Notes</th><th>Balance</th>
       </tr></thead><tbody id="collectBody"></tbody></table>
     </div>
   </div>
@@ -417,10 +477,10 @@ const TODAY = new Date('${todayStr}');
 const API_URL = ''; // Set after deploying Apps Script
 
 // ═══════ STATE ═══════
-let chartFilter = null; // {type:'status'|'aging'|'closing'|'balloon', value:...}
+let chartFilter = null;
 let sortCol = 'daysPastDue', sortDir = -1;
-let statusData = {}; // noteId -> { field: value }
-let amortCharts = []; // track for destruction
+let statusData = {};
+let amortCharts = [];
 const COLL_STATUSES = [
   {v:'monitoring',l:'Monitoring'},{v:'late_notice_sent',l:'Late Notice Sent'},{v:'demand_letter_sent',l:'Demand Letter Sent'},
   {v:'in_collections',l:'In Collections'},{v:'payment_plan',l:'Payment Plan'},{v:'resolved',l:'Resolved'}
@@ -453,7 +513,7 @@ async function loadStatuses() {
   try {
     document.getElementById('syncStatus').textContent = 'syncing...';
     document.getElementById('syncStatus').className = 'sync-status';
-    const res = await fetch(API_URL);
+    const res = await fetch(API_URL + '?action=statuses');
     const rows = await res.json();
     statusData = {};
     if (Array.isArray(rows)) {
@@ -470,17 +530,19 @@ async function loadStatuses() {
   }
 }
 
+async function postAPI(payload) {
+  if (!API_URL) { showToast('API not configured -- using local only', 'error'); return; }
+  showToast('Saving...', 'saving');
+  try {
+    await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Saved', 'saved');
+  } catch(e) { showToast('Save failed', 'error', 4000); }
+}
+
 async function saveStatus(noteId, field, value) {
   if (!statusData[noteId]) statusData[noteId] = {};
   statusData[noteId][field] = value;
-  if (!API_URL) { showToast('API not configured', 'error'); return; }
-  showToast('Saving...', 'saving');
-  try {
-    await fetch(API_URL, {
-      method: 'POST', body: JSON.stringify({ noteId, fieldName: field, fieldValue: value, updatedBy: getUser() })
-    });
-    showToast('Saved', 'saved');
-  } catch(e) { showToast('Save failed', 'error', 4000); }
+  await postAPI({ action: 'save_status', noteId, fieldName: field, fieldValue: value, updatedBy: getUser() });
 }
 
 // ═══════ TABS ═══════
@@ -493,7 +555,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ═══════ USER SELECTOR (persist in localStorage) ═══════
+// ═══════ USER SELECTOR ═══════
 const savedUser = localStorage.getItem('treze_user');
 if (savedUser) document.getElementById('userSelect').value = savedUser;
 document.getElementById('userSelect').addEventListener('change', function() {
@@ -503,17 +565,13 @@ document.getElementById('userSelect').addEventListener('change', function() {
 // ═══════ CHART CLICK HELPERS ═══════
 function setChartFilter(type, value) {
   chartFilter = {type, value};
-  // Switch to payments tab and render
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
   document.querySelector('[data-tab="payments"]').classList.add('active');
   document.getElementById('tab-payments').classList.add('active');
   renderPayments();
 }
-function clearChartFilter() {
-  chartFilter = null;
-  renderPayments();
-}
+function clearChartFilter() { chartFilter = null; renderPayments(); }
 
 function applyChartFilter(notes) {
   if (!chartFilter) return notes;
@@ -563,54 +621,45 @@ function renderOverview() {
     {label:'Balloons in 12 Mo',value:soon,cls:soon>0?'yellow':''}
   ].map(k => '<div class="kpi'+(k.click?' clickable" onclick="'+k.click+'"':'"')+'><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
 
-  // Status doughnut (clickable)
   const statusCounts = {};
   NOTES.forEach(n => { statusCounts[n.status]=(statusCounts[n.status]||0)+1; });
   const sLabels = Object.keys(statusCounts);
   const sColors = sLabels.map(s=>({'Current':'#2ecc71','Past Due':'#f1c40f','Late Notice':'#e67e22','Demand Letter':'#e74c3c','Severely Delinquent':'#ff6b6b'}[s]||'#555'));
-  const ch1 = new Chart(document.getElementById('statusChart'),{
+  overviewCharts.push(new Chart(document.getElementById('statusChart'),{
     type:'doughnut',
     data:{labels:sLabels,datasets:[{data:sLabels.map(s=>statusCounts[s]),backgroundColor:sColors,borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,onClick(e,els){if(els.length){setChartFilter('status',sLabels[els[0].index])}},plugins:{legend:{position:'right',labels:{color:'#8890a4',font:{size:12}}}}}
-  });
-  overviewCharts.push(ch1);
+  }));
 
-  // Aging bar (clickable)
   const buckets={'0 (Current)':0,'1-15':0,'16-30':0,'31-60':0,'60+':0};
   NOTES.forEach(n=>{if(n.daysPastDue===0)buckets['0 (Current)']++;else if(n.daysPastDue<=15)buckets['1-15']++;else if(n.daysPastDue<=30)buckets['16-30']++;else if(n.daysPastDue<=60)buckets['31-60']++;else buckets['60+']++});
-  const ch2 = new Chart(document.getElementById('agingChart'),{
+  overviewCharts.push(new Chart(document.getElementById('agingChart'),{
     type:'bar',
     data:{labels:Object.keys(buckets),datasets:[{data:Object.values(buckets),backgroundColor:['#2ecc71','#a8d854','#f1c40f','#e67e22','#e74c3c'],borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,onClick(e,els){if(els.length){setChartFilter('aging',Object.keys(buckets)[els[0].index])}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' notes'}}},scales:{y:{ticks:{color:'#8890a4',stepSize:1},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4'},grid:{display:false}}}}
-  });
-  overviewCharts.push(ch2);
+  }));
 
-  // Balance by closing (clickable)
   const closingBal={};
   NOTES.forEach(n=>{const k='#'+n.closing;closingBal[k]=(closingBal[k]||0)+n.currentBalance});
   const cKeys=Object.keys(closingBal).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));
-  const ch3 = new Chart(document.getElementById('closingChart'),{
+  overviewCharts.push(new Chart(document.getElementById('closingChart'),{
     type:'bar',
     data:{labels:cKeys,datasets:[{label:'Balance',data:cKeys.map(k=>closingBal[k]),backgroundColor:'#c9952b',borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,onClick(e,els){if(els.length){setChartFilter('closing',cKeys[els[0].index])}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw)}}},scales:{y:{ticks:{color:'#8890a4',callback:v=>fmtK(v)},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4'},grid:{display:false}}}}
-  });
-  overviewCharts.push(ch3);
+  }));
 
-  // Balloon timeline (clickable)
   const balloonByQ={};
   NOTES.forEach(n=>{const d=new Date(n.balloonDate);const q=d.getFullYear()+' Q'+(Math.floor(d.getMonth()/3)+1);balloonByQ[q]=(balloonByQ[q]||0)+1});
   const bKeys=Object.keys(balloonByQ).sort();
-  const ch4 = new Chart(document.getElementById('balloonChart'),{
+  overviewCharts.push(new Chart(document.getElementById('balloonChart'),{
     type:'bar',
     data:{labels:bKeys,datasets:[{label:'Notes Maturing',data:bKeys.map(k=>balloonByQ[k]),backgroundColor:'#3498db',borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,onClick(e,els){if(els.length){setChartFilter('balloon',bKeys[els[0].index])}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' notes'}}},scales:{y:{ticks:{color:'#8890a4',stepSize:1},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4',font:{size:10}},grid:{display:false}}}}
-  });
-  overviewCharts.push(ch4);
+  }));
 }
 
 // ═══════ PAYMENT STATUS TAB ═══════
 function renderPayments() {
-  // Show active chart filter
   const info = document.getElementById('pmtFilterInfo');
   if (chartFilter) {
     info.innerHTML = '<div class="active-filter">Filtered by '+chartFilter.type+': <strong>'+chartFilter.value+'</strong> <span class="clear" onclick="clearChartFilter()">&times;</span></div>';
@@ -627,10 +676,7 @@ function renderPayments() {
     if (searchF && !n.address.toLowerCase().includes(searchF) && !n.borrower.toLowerCase().includes(searchF)) return false;
     return true;
   });
-
-  // Apply chart filter on top
   filtered = applyChartFilter(filtered);
-
   filtered.sort((a,b) => {
     let va=a[sortCol],vb=b[sortCol];
     if(typeof va==='string') return sortDir*va.localeCompare(vb);
@@ -652,7 +698,6 @@ function renderPayments() {
   ).join('');
 }
 
-// Populate closing filter
 const closings=[...new Set(NOTES.map(n=>n.closing))].sort((a,b)=>a-b);
 closings.forEach(c=>{document.getElementById('filterClosing').innerHTML+='<option value="'+c+'">#'+c+'</option>'});
 document.getElementById('filterStatus').addEventListener('change',renderPayments);
@@ -684,24 +729,27 @@ function renderCollections() {
   document.getElementById('collectBody').innerHTML = actionNotes
     .sort((a,b)=>b.daysPastDue-a.daysPastDue)
     .map(n => {
-      let action='';
-      if(n.daysPastDue>30) action='<span style="color:#e74c3c;font-weight:600">Coordinate demand letter with Ty</span>';
-      else if(n.daysPastDue>15) action='<span style="color:#e67e22;font-weight:600">Mail late notice</span>';
-      else action='<span style="color:#f1c40f">Monitor -- approaching threshold</span>';
-
+      const nid = n.id.replace(/'/g,"\\\\'");
       const cs = getStatus(n.id, 'collection_status', 'monitoring');
       const cn = getStatus(n.id, 'collection_notes', '');
 
-      return '<tr class="action-needed" onclick="window.showAmortSchedule(\\''+n.id.replace(/'/g,"\\\\'")+'\\')">'+
+      let actionBtns = '';
+      if (n.daysPastDue > 30) {
+        actionBtns = '<button class="btn btn-red btn-sm" onclick="event.stopPropagation();window.generateDemandLetter(\\''+nid+'\\')">Demand Letter</button>';
+      } else if (n.daysPastDue > 0) {
+        actionBtns = '<button class="btn btn-gold btn-sm" onclick="event.stopPropagation();window.generateLateNotice(\\''+nid+'\\')">Late Notice</button>';
+      }
+
+      return '<tr class="action-needed" onclick="window.showAmortSchedule(\\''+nid+'\\')">'+
         '<td>'+n.address+'</td>'+
         '<td>'+n.borrower.substring(0,30)+'</td>'+
         '<td class="num" style="color:'+(n.daysPastDue>30?'#e74c3c':'#e67e22')+';font-weight:600">'+n.daysPastDue+'</td>'+
         '<td><span class="status '+statusClass(n.status)+'">'+n.status+'</span></td>'+
-        '<td onclick="event.stopPropagation()"><select class="edit-field coll-status '+cs+'" onchange="window.saveCollStatus(\\''+n.id.replace(/'/g,"\\\\'")+'\\',this.value,this)">'+
+        '<td onclick="event.stopPropagation()"><select class="edit-field coll-status '+cs+'" onchange="window.saveCollStatus(\\''+nid+'\\',this.value,this)">'+
           COLL_STATUSES.map(s=>'<option value="'+s.v+'"'+(s.v===cs?' selected':'')+'>'+s.l+'</option>').join('')+
         '</select></td>'+
-        '<td>'+action+'</td>'+
-        '<td onclick="event.stopPropagation()"><input class="edit-field" value="'+cn.replace(/"/g,'&quot;')+'" placeholder="Add note..." onblur="window.saveCollNote(\\''+n.id.replace(/'/g,"\\\\'")+'\\',this.value)"></td>'+
+        '<td onclick="event.stopPropagation()">'+actionBtns+'</td>'+
+        '<td onclick="event.stopPropagation()"><input class="edit-field" value="'+cn.replace(/"/g,'&quot;')+'" placeholder="Add note..." onblur="window.saveCollNote(\\''+nid+'\\',this.value)"></td>'+
         '<td class="num">'+fmt(n.currentBalance)+'</td>'+
         '</tr>';
     }).join('');
@@ -715,9 +763,279 @@ window.saveCollNote = function(id, val) {
   saveStatus(id, 'collection_notes', val);
 };
 
+// ═══════ PDF LETTER GENERATION (jsPDF) ═══════
+const LETTERHEAD = {
+  company: 'TREZE ALCOVE',
+  address1: '810 TEXAS AVE.',
+  cityStateZip: 'LUBBOCK, TX 79401',
+  payTo: 'Treze Alcove, LLC',
+  payAddr1: 'PO Box 2078',
+  payAddr2: 'Abilene, TX 79604',
+  signer: 'Kristen A. Gil, CPA',
+  signerTitle: 'Chief Financial Officer',
+  signerEntity: 'Treze Alcove, LLC',
+  contactEmail: 'kristen@platformenergy.com',
+  contactPhone: '(325) 232-7813'
+};
+
+function buildLetterHeader(doc) {
+  // Letterhead
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text(LETTERHEAD.company, 105, 25, { align: 'center' });
+  doc.setFontSize(13);
+  doc.text('- ' + LETTERHEAD.address1 + ' -', 105, 33, { align: 'center' });
+  doc.text(LETTERHEAD.cityStateZip, 105, 40, { align: 'center' });
+
+  // Gold line
+  doc.setDrawColor(201, 149, 43);
+  doc.setLineWidth(1);
+  doc.line(20, 45, 190, 45);
+
+  return 55; // y position after header
+}
+
+function fmtDateLong(dateStr) {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function fmtMoney(n) {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+window.generateLateNotice = function(noteId) {
+  const n = NOTES.find(x => x.id === noteId);
+  if (!n) return;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+
+  let y = buildLetterHeader(doc);
+
+  // Date (right aligned)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  const todayLong = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  doc.text(todayLong, 190, y, { align: 'right' });
+  y += 14;
+
+  // Recipient
+  const recipientName = n.ownerName || n.contact || n.borrower;
+  const recipientCompany = n.borrower !== recipientName ? n.borrower : '';
+  if (recipientCompany) { doc.text(recipientCompany, 20, y); y += 5; }
+  doc.text('Attn: ' + recipientName, 20, y); y += 5;
+  if (n.mailingAddress) {
+    const addrLines = n.mailingAddress.split(',').map(s => s.trim());
+    addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
+  }
+  y += 5;
+
+  // RE line
+  doc.text('RE: ' + n.address + ', Wolfforth, TX 79382', 20, y);
+  y += 10;
+
+  // Salutation
+  const saluteName = recipientName.split(' ').pop();
+  doc.text('Dear ' + recipientName + ',', 20, y);
+  y += 10;
+
+  // Body
+  const dueDate = fmtDateLong(n.nextDueDate);
+  const lateFee = n.lateFee;
+  const totalOwed = n.totalOwed;
+
+  const body1 = 'Your payment of ' + fmtMoney(n.monthlyPmt) + ' due on ' + dueDate + ' is past due.';
+  doc.text(body1, 20, y, { maxWidth: 170 });
+  y += 8;
+
+  doc.text('Please make arrangements to pay your outstanding balance plus a late fee of ' + fmtMoney(lateFee) + '.', 20, y, { maxWidth: 170 });
+  y += 6;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('The total you owe is ' + fmtMoney(totalOwed) + '.', 20, y, { maxWidth: 170 });
+  doc.setFont('helvetica', 'normal');
+  y += 6;
+
+  // Payment deadline — end of current month
+  const endOfMonth = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0);
+  const deadline = endOfMonth.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  doc.text('You may make this payment with a check, wire, or ACH. Payment is due no later than ' + deadline + ',', 20, y, { maxWidth: 170 });
+  y += 6;
+  doc.text('or your loan will be in default and additional fees will be incurred.', 20, y, { maxWidth: 170 });
+  y += 12;
+
+  // Payment address
+  doc.text('Please forward payment to the following address:', 20, y);
+  y += 8;
+  doc.text(LETTERHEAD.payTo, 20, y); y += 5;
+  doc.text(LETTERHEAD.payAddr1, 20, y); y += 5;
+  doc.text(LETTERHEAD.payAddr2, 20, y); y += 12;
+
+  // Contact
+  doc.text('Should you have any questions, please contact me at ' + LETTERHEAD.contactEmail + ' or ' + LETTERHEAD.contactPhone + '.', 20, y, { maxWidth: 170 });
+  y += 18;
+
+  // Signature
+  doc.setFont('helvetica', 'italic');
+  doc.text(LETTERHEAD.signer.split(' ')[0], 20, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.text(LETTERHEAD.signer, 20, y); y += 5;
+  doc.text(LETTERHEAD.signerTitle, 20, y); y += 5;
+  doc.text(LETTERHEAD.signerEntity, 20, y);
+
+  // Save
+  const filename = 'Late Notice - ' + n.address.replace(/[^a-zA-Z0-9 ]/g, '') + '.pdf';
+  doc.save(filename);
+  showToast('Late Notice generated: ' + n.address, 'saved', 3000);
+
+  // Log action
+  postAPI({ action: 'log_action', updatedBy: getUser(), actionType: 'late_notice_generated', noteId: n.id, details: 'Total owed: ' + fmtMoney(totalOwed) });
+};
+
+window.generateDemandLetter = function(noteId) {
+  const n = NOTES.find(x => x.id === noteId);
+  if (!n) return;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+
+  let y = buildLetterHeader(doc);
+
+  // Date
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  const todayLong = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  doc.text(todayLong, 190, y, { align: 'right' });
+  y += 14;
+
+  // Recipient
+  const recipientName = n.ownerName || n.contact || n.borrower;
+  const recipientCompany = n.borrower !== recipientName ? n.borrower : '';
+  if (recipientCompany) { doc.text(recipientCompany, 20, y); y += 5; }
+  doc.text('Attn: ' + recipientName, 20, y); y += 5;
+  if (n.mailingAddress) {
+    const addrLines = n.mailingAddress.split(',').map(s => s.trim());
+    addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
+  }
+  y += 5;
+
+  // RE
+  doc.text('RE: ' + n.address + ', Wolfforth, TX 79382', 20, y);
+  y += 10;
+
+  // Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('NOTICE OF DEFAULT AND INTENT TO ACCELERATE', 105, y, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  y += 10;
+
+  // Body
+  doc.text('Dear ' + recipientName + ',', 20, y);
+  y += 8;
+
+  const noteDate = fmtDateLong(n.beginDate);
+  doc.text('This letter is regarding the promissory note dated ' + noteDate + ' in the original principal', 20, y, { maxWidth: 170 });
+  y += 5;
+  doc.text('amount of ' + fmtMoney(n.loanAmt) + ' (the "Note"), secured by a Deed of Trust on the property located at:', 20, y, { maxWidth: 170 });
+  y += 10;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text(n.address + ', Wolfforth, TX 79382', 30, y);
+  doc.setFont('helvetica', 'normal');
+  y += 10;
+
+  doc.text('You are in default under the terms of the Note for failure to make your regularly scheduled', 20, y, { maxWidth: 170 });
+  y += 5;
+  doc.text('monthly payment(s). As of the date of this letter, your account is ' + n.daysPastDue + ' days past due.', 20, y, { maxWidth: 170 });
+  y += 10;
+
+  // Arrearage calculation
+  const missedMonths = Math.ceil(n.daysPastDue / 30);
+  const missedPmts = missedMonths * n.monthlyPmt;
+  const lateFees = missedMonths * n.lateFee;
+  const totalArrearage = missedPmts + lateFees;
+
+  doc.text('Arrearage Summary:', 20, y);
+  y += 6;
+  doc.text('  Missed payments (' + missedMonths + ' month' + (missedMonths > 1 ? 's' : '') + '):   ' + fmtMoney(missedPmts), 25, y); y += 5;
+  doc.text('  Late fees:                             ' + fmtMoney(lateFees), 25, y); y += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.text('  Total amount due:                 ' + fmtMoney(totalArrearage), 25, y);
+  doc.setFont('helvetica', 'normal');
+  y += 10;
+
+  // Cure period
+  const cureDate = new Date();
+  cureDate.setDate(cureDate.getDate() + 30);
+  const cureDateStr = cureDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  doc.text('You have the right to cure the default on your loan. In order to cure the default, you must pay', 20, y, { maxWidth: 170 });
+  y += 5;
+  doc.text('the above amount to Treze Alcove, LLC on or before ' + cureDateStr + '.', 20, y, { maxWidth: 170 });
+  y += 10;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('If the amount set forth above is not received in full by the date set forth above, the loan', 20, y, { maxWidth: 170 });
+  y += 5;
+  doc.text('will be accelerated and formal legal proceedings to foreclose the property may be initiated.', 20, y, { maxWidth: 170 });
+  doc.setFont('helvetica', 'normal');
+  y += 10;
+
+  // Payment instructions
+  doc.text('Payments must be in the form of certified funds, cashier\\'s check, or wire transfer.', 20, y, { maxWidth: 170 });
+  y += 8;
+  doc.text('Send payments to:', 20, y); y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.text(LETTERHEAD.payTo, 25, y); y += 5;
+  doc.text('749 Gateway Street, Suite 203', 25, y); y += 5;
+  doc.text('Abilene, TX 79602', 25, y);
+  doc.setFont('helvetica', 'normal');
+  y += 10;
+
+  // Contact
+  doc.text('Should you have any questions or wish to make arrangements for payment, please contact', 20, y, { maxWidth: 170 });
+  y += 5;
+  doc.text(LETTERHEAD.contactEmail + ' or ' + LETTERHEAD.contactPhone + '.', 20, y);
+  y += 15;
+
+  // Signature
+  doc.text('Sincerely,', 20, y); y += 10;
+  doc.setFont('helvetica', 'italic');
+  doc.text(LETTERHEAD.signer.split(' ')[0], 20, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.text(LETTERHEAD.signer, 20, y); y += 5;
+  doc.text(LETTERHEAD.signerTitle, 20, y); y += 5;
+  doc.text(LETTERHEAD.signerEntity, 20, y);
+
+  const filename = 'Demand Letter - ' + n.address.replace(/[^a-zA-Z0-9 ]/g, '') + '.pdf';
+  doc.save(filename);
+  showToast('Demand Letter generated: ' + n.address, 'saved', 3000);
+
+  postAPI({ action: 'log_action', updatedBy: getUser(), actionType: 'demand_letter_generated', noteId: n.id, details: 'Arrearage: ' + fmtMoney(totalArrearage) });
+};
+
+// Batch PDF generation
+window.generateAllLateNotices = function() {
+  const lateNotes = NOTES.filter(n => n.daysPastDue > 0 && n.daysPastDue <= 30);
+  if (lateNotes.length === 0) { showToast('No notes qualify for late notice', 'error'); return; }
+  lateNotes.forEach(n => window.generateLateNotice(n.id));
+  showToast('Generated ' + lateNotes.length + ' late notice(s)', 'saved', 3000);
+};
+
+window.generateAllDemandLetters = function() {
+  const demandNotes = NOTES.filter(n => n.daysPastDue > 30);
+  if (demandNotes.length === 0) { showToast('No notes qualify for demand letter', 'error'); return; }
+  demandNotes.forEach(n => window.generateDemandLetter(n.id));
+  showToast('Generated ' + demandNotes.length + ' demand letter(s)', 'saved', 3000);
+};
+
 // ═══════ INSURANCE TAB ═══════
 function getInsuranceStatus(n) {
-  const exp = getStatus(n.id, 'insurance_expiration');
+  const exp = getStatus(n.id, 'insurance_expiration') || n.insuranceExpiration;
   const carrier = getStatus(n.id, 'insurance_carrier', '');
   const policy = getStatus(n.id, 'insurance_policy_num', '');
   if (!exp) return {status:'unknown',label:'No data on file',daysUntil:null,carrier,policy,exp:''};
@@ -759,7 +1077,7 @@ function renderInsurance() {
         '<div><label>Carrier</label><br><input class="edit-field" value="'+s.ins.carrier.replace(/"/g,'&quot;')+'" placeholder="Carrier name..." onblur="window.saveIns(\\''+nid+'\\',\\'insurance_carrier\\',this.value)"></div>'+
         '<div><label>Policy #</label><br><input class="edit-field" value="'+s.ins.policy.replace(/"/g,'&quot;')+'" placeholder="Policy number..." onblur="window.saveIns(\\''+nid+'\\',\\'insurance_policy_num\\',this.value)"></div>'+
       '</div>'+
-      (s.ins.status==='lapsed'&&s.ins.daysUntil!==null&&Math.abs(s.ins.daysUntil)>30?'<div class="ins-warn">30+ days lapsed -- coordinate demand letter with Ty</div>':'')+
+      (s.ins.status==='lapsed'&&s.ins.daysUntil!==null&&Math.abs(s.ins.daysUntil)>30?'<div class="ins-warn">30+ days lapsed -- send demand letter for insurance</div>':'')+
     '</div>';
   }).join('');
 }
@@ -834,7 +1152,6 @@ window.showAmortSchedule = function(id) {
   const n = NOTES.find(x => x.id === id);
   if (!n) return;
 
-  // Destroy previous charts
   amortCharts.forEach(c => c.destroy());
   amortCharts = [];
 
@@ -847,6 +1164,12 @@ window.showAmortSchedule = function(id) {
     '<div class="close-btn" onclick="document.getElementById(\\'amortOverlay\\').classList.remove(\\'show\\')">&times;</div>'+
     '<h2>'+n.address+' <span style="color:#c9952b">#'+n.closing+'</span></h2>'+
     '<div class="amort-sub">'+n.borrower+'</div>'+
+
+    // Action buttons in panel
+    '<div class="btn-group">'+
+      (n.daysPastDue > 30 ? '<button class="btn btn-red btn-sm" onclick="window.generateDemandLetter(\\''+nid+'\\')">Generate Demand Letter</button>' : '')+
+      (n.daysPastDue > 0 && n.daysPastDue <= 30 ? '<button class="btn btn-gold btn-sm" onclick="window.generateLateNotice(\\''+nid+'\\')">Generate Late Notice</button>' : '')+
+    '</div>'+
 
     '<div class="detail-grid">'+
       '<div class="detail-item"><div class="dl">Loan Amount</div><div class="dv">'+fmt(n.loanAmt)+'</div></div>'+
@@ -861,6 +1184,19 @@ window.showAmortSchedule = function(id) {
       '<div class="detail-item"><div class="dl">Payments Made</div><div class="dv">'+n.totalCollected+' of '+(n.totalCollected+n.remainingPayments)+'</div></div>'+
       '<div class="detail-item"><div class="dl">Gain on Sale</div><div class="dv">'+(n.gain?fmt(n.gain):'--')+'</div></div>'+
       '<div class="detail-item"><div class="dl">GP %</div><div class="dv">'+(n.gpPct?fmtPct(n.gpPct):'--')+'</div></div>'+
+    '</div>'+
+
+    // Contact info section
+    '<div style="background:#1a1d2e;border-radius:8px;padding:16px;border:1px solid #2a2d3e;margin-bottom:18px">'+
+      '<h3 style="font-size:13px;color:#fff;margin-bottom:10px">Contact Information</h3>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">'+
+        '<div><span style="color:#8890a4">Owner:</span> '+(n.ownerName||'--')+'</div>'+
+        '<div><span style="color:#8890a4">Contact:</span> '+(n.contact||'--')+'</div>'+
+        '<div><span style="color:#8890a4">Email:</span> '+(n.email||'--')+'</div>'+
+        '<div><span style="color:#8890a4">Phone:</span> '+(n.phone||'--')+'</div>'+
+        '<div><span style="color:#8890a4">Payment Method:</span> '+(n.paymentMethod||'--')+'</div>'+
+        '<div><span style="color:#8890a4">Mailing:</span> '+(n.mailingAddress||'--')+'</div>'+
+      '</div>'+
     '</div>'+
 
     '<div class="amort-charts">'+
@@ -885,22 +1221,27 @@ window.showAmortSchedule = function(id) {
         '<td><span style="color:#2ecc71;font-size:11px">Collected</span></td></tr>'
       ).join('')+
       '<tr class="divider"><td colspan="7">Scheduled (Remaining)</td></tr>'+
-      n.scheduledPayments.map((p,i) =>
+      n.scheduledPayments.slice(0,3).map((p,i) =>
         '<tr class="scheduled"><td class="num">'+(p.month||(n.totalCollected+i+1))+'</td><td>'+fmtDate(p.date)+'</td>'+
+        '<td class="num">'+fmt(p.payment)+'</td><td class="num">'+fmt(p.interest)+'</td>'+
+        '<td class="num">'+fmt(p.principal)+'</td><td class="num">'+(p.balance!=null?fmt(p.balance):'--')+'</td>'+
+        '<td><button class="collect-btn" onclick="event.stopPropagation();window.markCollected(\\''+nid+'\\',\\''+p.date+'\\','+p.payment+')">Mark Collected</button></td></tr>'
+      ).join('')+
+      n.scheduledPayments.slice(3).map((p,i) =>
+        '<tr class="scheduled"><td class="num">'+(p.month||(n.totalCollected+i+4))+'</td><td>'+fmtDate(p.date)+'</td>'+
         '<td class="num">'+fmt(p.payment)+'</td><td class="num">'+fmt(p.interest)+'</td>'+
         '<td class="num">'+fmt(p.principal)+'</td><td class="num">'+(p.balance!=null?fmt(p.balance):'--')+'</td>'+
         '<td style="color:#555;font-size:11px">Scheduled</td></tr>'
       ).join('')+
     '</tbody></table></div>';
 
-  // Build charts
+  // Charts
   const labels = all.map((p,i) => i+1);
   const interestData = all.map(p => p.interest);
   const principalData = all.map(p => p.principal);
   const balanceData = all.map(p => p.balance);
   const todayIdx = n.collectedPayments.length;
 
-  // Payment breakdown stacked area
   amortCharts.push(new Chart(document.getElementById('amortBreakdown'), {
     type: 'line',
     data: {
@@ -912,10 +1253,7 @@ window.showAmortSchedule = function(id) {
     },
     options: {
       responsive:true,maintainAspectRatio:false,
-      plugins:{
-        legend:{labels:{color:'#8890a4'}},
-        annotation: undefined
-      },
+      plugins:{legend:{labels:{color:'#8890a4'}}},
       scales:{
         y:{stacked:true,ticks:{color:'#8890a4',callback:v=>fmt(v)},grid:{color:'#2a2d3e'}},
         x:{ticks:{color:'#8890a4',maxTicksLimit:12,callback:function(v){return 'Mo '+this.getLabelForValue(v)}},grid:{display:false}}
@@ -929,38 +1267,22 @@ window.showAmortSchedule = function(id) {
         const x = xScale.getPixelForValue(todayIdx - 1);
         const ctx = chart.ctx;
         ctx.save();
-        ctx.beginPath();
-        ctx.strokeStyle = '#c9952b';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 3]);
-        ctx.moveTo(x, chart.chartArea.top);
-        ctx.lineTo(x, chart.chartArea.bottom);
-        ctx.stroke();
-        ctx.fillStyle = '#c9952b';
-        ctx.font = '11px Segoe UI';
-        ctx.fillText('Today', x + 4, chart.chartArea.top + 12);
+        ctx.beginPath(); ctx.strokeStyle = '#c9952b'; ctx.lineWidth = 2; ctx.setLineDash([5, 3]);
+        ctx.moveTo(x, chart.chartArea.top); ctx.lineTo(x, chart.chartArea.bottom); ctx.stroke();
+        ctx.fillStyle = '#c9952b'; ctx.font = '11px Segoe UI'; ctx.fillText('Today', x + 4, chart.chartArea.top + 12);
         ctx.restore();
       }
     }]
   }));
 
-  // Balance curve
   amortCharts.push(new Chart(document.getElementById('amortBalance'), {
     type: 'line',
     data: {
       labels,
       datasets: [{
-        label: 'Balance',
-        data: balanceData,
-        borderColor: '#3498db',
-        backgroundColor: 'rgba(52,152,219,.1)',
-        fill: true,
-        pointRadius: 0,
-        tension: .3,
-        segment: {
-          borderColor: ctx => ctx.p0DataIndex < todayIdx ? '#3498db' : '#555',
-          borderDash: ctx => ctx.p0DataIndex < todayIdx ? [] : [5, 3]
-        }
+        label: 'Balance', data: balanceData, borderColor: '#3498db', backgroundColor: 'rgba(52,152,219,.1)',
+        fill: true, pointRadius: 0, tension: .3,
+        segment: { borderColor: ctx => ctx.p0DataIndex < todayIdx ? '#3498db' : '#555', borderDash: ctx => ctx.p0DataIndex < todayIdx ? [] : [5, 3] }
       }]
     },
     options: {
@@ -979,22 +1301,59 @@ window.showAmortSchedule = function(id) {
         const x = xScale.getPixelForValue(todayIdx - 1);
         const ctx = chart.ctx;
         ctx.save();
-        ctx.beginPath();
-        ctx.strokeStyle = '#c9952b';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 3]);
-        ctx.moveTo(x, chart.chartArea.top);
-        ctx.lineTo(x, chart.chartArea.bottom);
-        ctx.stroke();
-        ctx.fillStyle = '#c9952b';
-        ctx.font = '11px Segoe UI';
-        ctx.fillText('Today', x + 4, chart.chartArea.top + 12);
+        ctx.beginPath(); ctx.strokeStyle = '#c9952b'; ctx.lineWidth = 2; ctx.setLineDash([5, 3]);
+        ctx.moveTo(x, chart.chartArea.top); ctx.lineTo(x, chart.chartArea.bottom); ctx.stroke();
+        ctx.fillStyle = '#c9952b'; ctx.font = '11px Segoe UI'; ctx.fillText('Today', x + 4, chart.chartArea.top + 12);
         ctx.restore();
       }
     }]
   }));
 
   document.getElementById('amortOverlay').classList.add('show');
+};
+
+// ═══════ MARK COLLECTED (from amort panel) ═══════
+window.markCollected = function(noteId, date, amount) {
+  const user = getUser();
+  if (!user) { showToast('Please select a user first', 'error'); return; }
+
+  // Update local data
+  const n = NOTES.find(x => x.id === noteId);
+  if (!n) return;
+  const idx = n.scheduledPayments.findIndex(p => p.date === date);
+  if (idx >= 0) {
+    const pmt = n.scheduledPayments.splice(idx, 1)[0];
+    pmt.collected = true;
+    n.collectedPayments.push(pmt);
+    n.totalCollected++;
+    n.remainingPayments--;
+    n.lastPmtDate = pmt.date;
+    n.lastPmtAmount = pmt.payment;
+    if (pmt.balance != null) n.currentBalance = pmt.balance;
+
+    // Recalculate status
+    const next = n.scheduledPayments[0];
+    if (next) {
+      n.nextDueDate = next.date;
+      const nextDue = new Date(next.date);
+      n.daysPastDue = Math.max(0, Math.floor((TODAY - nextDue) / (1000*60*60*24)));
+      if (n.daysPastDue > 60) n.status = 'Severely Delinquent';
+      else if (n.daysPastDue > 30) n.status = 'Demand Letter';
+      else if (n.daysPastDue > 15) n.status = 'Late Notice';
+      else if (n.daysPastDue > 0) n.status = 'Past Due';
+      else n.status = 'Current';
+    }
+  }
+
+  // Re-render
+  window.showAmortSchedule(noteId);
+  renderPayments();
+  renderCollections();
+  renderOverview();
+
+  // Sync to API
+  postAPI({ action: 'mark_collected', noteId, date, amount, updatedBy: user });
+  showToast('Payment marked as collected by ' + user, 'saved', 3000);
 };
 
 window.saveGeneralNote = function(id, val) {
