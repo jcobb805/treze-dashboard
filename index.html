@@ -733,7 +733,7 @@ window.generateDemandLetter = function(noteId) {
   doc.setFontSize(11);
   const todayLong = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   doc.text(todayLong, 190, y, { align: 'right' });
-  y += 14;
+  y += 12;
 
   // Recipient
   const recipientName = n.ownerName || n.contact || n.borrower;
@@ -744,11 +744,11 @@ window.generateDemandLetter = function(noteId) {
     const addrLines = n.mailingAddress.split(',').map(s => s.trim());
     addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
   }
-  y += 5;
+  y += 3;
 
   // RE
   doc.text('RE: ' + n.address + ', Wolfforth, TX 79382', 20, y);
-  y += 10;
+  y += 8;
 
   // Title
   doc.setFont('helvetica', 'bold');
@@ -756,27 +756,27 @@ window.generateDemandLetter = function(noteId) {
   doc.text('NOTICE OF DEFAULT AND INTENT TO ACCELERATE', 105, y, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  y += 10;
+  y += 8;
 
   // Body
   doc.text('Dear ' + recipientName + ',', 20, y);
-  y += 8;
+  y += 7;
 
   const noteDate = fmtDateLong(n.beginDate);
   doc.text('This letter is regarding the promissory note dated ' + noteDate + ' in the original principal', 20, y, { maxWidth: 170 });
   y += 5;
   doc.text('amount of ' + fmtMoney(n.loanAmt) + ' (the "Note"), secured by a Deed of Trust on the property located at:', 20, y, { maxWidth: 170 });
-  y += 10;
+  y += 8;
 
   doc.setFont('helvetica', 'bold');
   doc.text(n.address + ', Wolfforth, TX 79382', 30, y);
   doc.setFont('helvetica', 'normal');
-  y += 10;
+  y += 8;
 
   doc.text('You are in default under the terms of the Note for failure to make your regularly scheduled', 20, y, { maxWidth: 170 });
   y += 5;
   doc.text('monthly payment(s). As of the date of this letter, your account is ' + n.daysPastDue + ' days past due.', 20, y, { maxWidth: 170 });
-  y += 10;
+  y += 8;
 
   // Arrearage calculation
   const missedMonths = Math.ceil(n.daysPastDue / 30);
@@ -791,7 +791,7 @@ window.generateDemandLetter = function(noteId) {
   doc.setFont('helvetica', 'bold');
   doc.text('  Total amount due:                 ' + fmtMoney(totalArrearage), 25, y);
   doc.setFont('helvetica', 'normal');
-  y += 10;
+  y += 8;
 
   // Cure period
   const cureDate = new Date();
@@ -801,31 +801,31 @@ window.generateDemandLetter = function(noteId) {
   doc.text('You have the right to cure the default on your loan. In order to cure the default, you must pay', 20, y, { maxWidth: 170 });
   y += 5;
   doc.text('the above amount to Treze Alcove, LLC on or before ' + cureDateStr + '.', 20, y, { maxWidth: 170 });
-  y += 10;
+  y += 8;
 
   doc.setFont('helvetica', 'bold');
   doc.text('If the amount set forth above is not received in full by the date set forth above, the loan', 20, y, { maxWidth: 170 });
   y += 5;
   doc.text('will be accelerated and formal legal proceedings to foreclose the property may be initiated.', 20, y, { maxWidth: 170 });
   doc.setFont('helvetica', 'normal');
-  y += 10;
+  y += 8;
 
   // Payment instructions
   doc.text('Payments must be in the form of certified funds, cashier\'s check, or wire transfer.', 20, y, { maxWidth: 170 });
-  y += 8;
+  y += 7;
   doc.text('Send payments to:', 20, y); y += 6;
   doc.setFont('helvetica', 'bold');
   doc.text(LETTERHEAD.payTo, 25, y); y += 5;
   doc.text('749 Gateway Street, Suite 203', 25, y); y += 5;
   doc.text('Abilene, TX 79602', 25, y);
   doc.setFont('helvetica', 'normal');
-  y += 10;
+  y += 8;
 
   // Contact
   doc.text('Should you have any questions or wish to make arrangements for payment, please contact', 20, y, { maxWidth: 170 });
   y += 5;
   doc.text(LETTERHEAD.contactEmail + ' or ' + LETTERHEAD.contactPhone + '.', 20, y);
-  y += 15;
+  y += 12;
 
   // Signature
   doc.text('Sincerely,', 20, y); y += 10;
