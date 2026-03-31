@@ -275,7 +275,7 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
     <h3 style="color:#fff;margin:20px 0 15px">Monthly Projection</h3>
     <div class="table-wrap" style="max-height:500px;overflow-y:auto">
       <table><thead><tr>
-        <th>Month</th><th>Active Notes</th><th>N/R Income</th><th>Balloon Payoffs</th><th>FUB Interest</th><th>FUB Principal</th><th>Extra Paydown</th><th>Total Debt Service</th><th>Net Cash Flow</th><th>FUB Balance</th>
+        <th>Month</th><th>Active Notes</th><th>N/R Income</th><th>Balloon Payoffs</th><th>FUB Interest</th><th>FUB Principal</th><th>Extra Paydown</th><th>FUB Balloon</th><th>Total Debt Service</th><th>Net Cash Flow</th><th>FUB Balance</th>
       </tr></thead><tbody id="analysisBody"></tbody></table>
     </div>
   </div>
@@ -1291,8 +1291,11 @@ window.renderAnalysis = function() {
     const totalPrincipal = basePrincipal + extraPaydown;
     const actualPrincipal = Math.min(totalPrincipal, fubBal);
     const actualExtra = Math.min(extraPaydown, Math.max(0, fubBal - basePrincipal));
-    const totalDs = monthlyInterest + actualPrincipal;
-    const netCf = nrIncome + balloonIncome - monthlyInterest - basePrincipal - actualExtra;
+    // FUB balloon payoff in maturity month (remaining balance due)
+    const isMaturityMonth = monthDate.getFullYear() === maturity.getFullYear() && monthDate.getMonth() === maturity.getMonth();
+    const fubBalloon = isMaturityMonth ? Math.max(0, fubBal - actualPrincipal) : 0;
+    const totalDs = monthlyInterest + actualPrincipal + fubBalloon;
+    const netCf = nrIncome + balloonIncome - monthlyInterest - basePrincipal - actualExtra - fubBalloon;
 
     totalNetCf += netCf;
     totalNrIncome += nrIncome + balloonIncome;
@@ -1308,6 +1311,7 @@ window.renderAnalysis = function() {
       fubInterest: monthlyInterest,
       fubPrincipal: basePrincipal,
       extraPd: actualExtra,
+      fubBalloon,
       totalDs,
       netCf,
       fubBal
@@ -1319,7 +1323,7 @@ window.renderAnalysis = function() {
     debtServiceData.push(Math.round(-totalDs));
     fubBalData.push(Math.round(fubBal));
 
-    fubBal = Math.max(0, fubBal - actualPrincipal);
+    fubBal = Math.max(0, fubBal - actualPrincipal - fubBalloon);
   }
 
   // KPIs
@@ -1401,6 +1405,7 @@ window.renderAnalysis = function() {
       '<td class="num" style="color:#e74c3c">'+fmt(r.fubInterest)+'</td>'+
       '<td class="num">'+fmt(r.fubPrincipal)+'</td>'+
       '<td class="num" style="color:#c9952b">'+(r.extraPd>0?fmt(r.extraPd):'-')+'</td>'+
+      '<td class="num" style="color:#e74c3c;font-weight:'+(r.fubBalloon>0?'600':'normal')+'">'+(r.fubBalloon>0?fmt(r.fubBalloon):'-')+'</td>'+
       '<td class="num" style="color:#e74c3c">'+fmt(r.totalDs)+'</td>'+
       '<td class="num" style="color:'+(r.netCf>=0?'#2ecc71':'#e74c3c')+';font-weight:600">'+fmt(r.netCf)+'</td>'+
       '<td class="num">'+fmt(r.fubBal)+'</td>'+
