@@ -657,10 +657,16 @@ window.generateLateNotice = function(noteId) {
   if (hasDistinctContact) { doc.text('Attn: ' + contactPerson, 20, y); y += 5; }
   if (n.mailingAddress) {
     const addrParts = n.mailingAddress.split(',').map(s => s.trim());
-    // Keep city + state/zip on one line (last two parts)
-    const addrLines = addrParts.length >= 3
-      ? [addrParts.slice(0, -2).join(', '), addrParts.slice(-2).join(', ')]
-      : addrParts;
+    // Merge state/zip with preceding part if it's just a state abbreviation + zip (e.g. "MA 02601")
+    const stateZip = /^[A-Z]{2}s+d{5}(-d{4})?$/;
+    const addrLines = [];
+    for (let i = 0; i < addrParts.length; i++) {
+      if (i > 0 && stateZip.test(addrParts[i])) {
+        addrLines[addrLines.length - 1] += ', ' + addrParts[i];
+      } else {
+        addrLines.push(addrParts[i]);
+      }
+    }
     addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
   }
   y += 5;
@@ -750,10 +756,16 @@ window.generateDemandLetter = function(noteId) {
   if (hasDistinctContact) { doc.text('Attn: ' + contactPerson, 20, y); y += 5; }
   if (n.mailingAddress) {
     const addrParts = n.mailingAddress.split(',').map(s => s.trim());
-    // Keep city + state/zip on one line (last two parts)
-    const addrLines = addrParts.length >= 3
-      ? [addrParts.slice(0, -2).join(', '), addrParts.slice(-2).join(', ')]
-      : addrParts;
+    // Merge state/zip with preceding part if it's just a state abbreviation + zip (e.g. "MA 02601")
+    const stateZip = /^[A-Z]{2}s+d{5}(-d{4})?$/;
+    const addrLines = [];
+    for (let i = 0; i < addrParts.length; i++) {
+      if (i > 0 && stateZip.test(addrParts[i])) {
+        addrLines[addrLines.length - 1] += ', ' + addrParts[i];
+      } else {
+        addrLines.push(addrParts[i]);
+      }
+    }
     addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
   }
   y += 3;
