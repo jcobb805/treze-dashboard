@@ -975,7 +975,10 @@ function clearChartFilter() { chartFilter = null; renderPayments(); }
 function applyChartFilter(notes) {
   if (!chartFilter) return notes;
   const f = chartFilter;
-  if (f.type === 'status') return notes.filter(n => n.status === f.value);
+  if (f.type === 'status') {
+    if (f.value === 'Past Due') return notes.filter(n => n.daysPastDue > 0);
+    return notes.filter(n => n.status === f.value);
+  }
   if (f.type === 'closing') return notes.filter(n => '#'+n.closing === f.value);
   if (f.type === 'aging') {
     return notes.filter(n => {
