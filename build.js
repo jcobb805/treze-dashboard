@@ -1279,7 +1279,7 @@ window.generateLateNotice = function(noteId) {
   y += 18;
 
   // Signature
-  doc.addImage(SIGNATURE_IMG, 'PNG', 20, y - 2, 38, 16);
+  doc.addImage(SIGNATURE_IMG, 'PNG', 20, y - 10, 38, 16);
   y += 12;
   doc.setFont('helvetica', 'normal');
   doc.text(LETTERHEAD.signer, 20, y); y += 5;
@@ -1405,7 +1405,7 @@ window.generateDemandLetter = function(noteId) {
 
   // Signature
   doc.text('Sincerely,', 20, y); y += 10;
-  doc.addImage(SIGNATURE_IMG, 'PNG', 20, y - 2, 38, 16);
+  doc.addImage(SIGNATURE_IMG, 'PNG', 20, y - 10, 38, 16);
   y += 12;
   doc.setFont('helvetica', 'normal');
   doc.text(LETTERHEAD.signer, 20, y); y += 5;
