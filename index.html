@@ -577,6 +577,7 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
   <div class="tab" data-tab="collections">Collections<span class="badge" id="collectBadge">0</span></div>
   <div class="tab" data-tab="insurance">Insurance</div>
   <div class="tab" data-tab="cashflow">Cash Flow</div>
+  <div class="tab" data-tab="analysis">Analysis</div>
 </div>
 
 <div class="content">
@@ -641,6 +642,39 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
     <h3 style="color:#fff;margin-bottom:15px">Upcoming Balloon Maturities</h3>
     <div class="table-wrap">
       <table><thead><tr><th>Address</th><th>Borrower</th><th>Balloon Date</th><th>Months Remaining</th><th>Est. Balance at Maturity</th><th>Monthly Payment</th></tr></thead><tbody id="balloonBody"></tbody></table>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-analysis">
+    <h3 style="color:#fff;margin-bottom:5px">Treze Alcove — Net Cash Flow Analysis</h3>
+    <p style="color:#8890a4;margin-bottom:18px;font-size:13px">Notes Receivable income vs. First United Bank debt service. Adjust sliders to model scenarios.</p>
+    <div class="kpi-row" id="analysisKpi"></div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px">
+      <div style="flex:1;min-width:280px;background:#1a1d2e;padding:16px;border-radius:8px;border:1px solid #2a2d3e">
+        <label style="font-size:11px;text-transform:uppercase;color:#8890a4;letter-spacing:.5px">Additional Monthly Principal Paydown</label>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+          <input type="range" id="extraPaydown" min="0" max="10000" step="100" value="0" style="flex:1" oninput="window.renderAnalysis()">
+          <span id="extraPaydownVal" style="color:#c9952b;font-weight:600;min-width:70px;text-align:right">$0</span>
+        </div>
+      </div>
+      <div style="flex:1;min-width:280px;background:#1a1d2e;padding:16px;border-radius:8px;border:1px solid #2a2d3e">
+        <label style="font-size:11px;text-transform:uppercase;color:#8890a4;letter-spacing:.5px">Assumed Floating Rate (after Apr 2027)</label>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+          <input type="range" id="floatingRate" min="4.25" max="12" step="0.25" value="8.0" style="flex:1" oninput="window.renderAnalysis()">
+          <span id="floatingRateVal" style="color:#c9952b;font-weight:600;min-width:55px;text-align:right">8.00%</span>
+        </div>
+        <div style="font-size:11px;color:#555;margin-top:4px">Floor: 4.25% | Currently: prime + 0.50%</div>
+      </div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card" style="flex:2"><h3>Monthly Net Cash Flow</h3><div class="chart-wrap"><canvas id="analysisCfChart"></canvas></div></div>
+      <div class="chart-card" style="flex:1"><h3>FUB Loan Balance</h3><div class="chart-wrap"><canvas id="analysisBal"></canvas></div></div>
+    </div>
+    <h3 style="color:#fff;margin:20px 0 15px">Monthly Projection</h3>
+    <div class="table-wrap" style="max-height:500px;overflow-y:auto">
+      <table><thead><tr>
+        <th>Month</th><th>Active Notes</th><th>N/R Income</th><th>FUB Interest</th><th>FUB Principal</th><th>Extra Paydown</th><th>Total Debt Service</th><th>Net Cash Flow</th><th>FUB Balance</th>
+      </tr></thead><tbody id="analysisBody"></tbody></table>
     </div>
   </div>
 </div>
@@ -1582,6 +1616,174 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.getElementById('amortOverlay').classList.remove('show');
 });
 
+// ═══════ ANALYSIS TAB ═══════
+const FUB = {
+  balanceAsOf: 2594885.02,
+  balanceDate: '2026-02-28',
+  fixedRate: 0.0725,
+  fixedUntil: '2027-04-18',
+  floatingSpread: 0.005, // prime + 0.5%
+  floor: 0.0425,
+  monthlyPmt: 23600,
+  maturity: '2030-03-18'
+};
+
+let analysisCfChart = null;
+let analysisBalChart = null;
+
+window.renderAnalysis = function() {
+  const extraPaydown = parseFloat(document.getElementById('extraPaydown').value) || 0;
+  const floatingRate = parseFloat(document.getElementById('floatingRate').value) / 100;
+  document.getElementById('extraPaydownVal').textContent = '$' + extraPaydown.toLocaleString();
+  document.getElementById('floatingRateVal').textContent = (floatingRate * 100).toFixed(2) + '%';
+
+  // Build month-by-month projection from March 2026 to March 2030
+  const startDate = new Date(2026, 2, 1); // Mar 2026
+  const fixedEnd = new Date(2027, 3, 18); // Apr 18, 2027
+  const maturity = new Date(2030, 2, 18); // Mar 18, 2030
+  let fubBal = FUB.balanceAsOf;
+
+  // Pre-compute which notes are active each month (based on balloon dates)
+  const rows = [];
+  const labels = [];
+  const netCfData = [];
+  const nrIncomeData = [];
+  const debtServiceData = [];
+  const fubBalData = [];
+
+  let totalNetCf = 0;
+  let totalNrIncome = 0;
+  let totalDebtService = 0;
+  let totalInterest = 0;
+
+  for (let m = 0; m < 49; m++) { // ~4 years
+    const monthDate = new Date(startDate.getFullYear(), startDate.getMonth() + m, 1);
+    if (monthDate > maturity) break;
+    const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+    const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+    // Count active notes and income this month
+    const activeNotes = NOTES.filter(n => {
+      const balloon = new Date(n.balloonDate);
+      return balloon > monthDate;
+    });
+    const nrIncome = activeNotes.reduce((s, n) => s + n.monthlyPmt, 0);
+
+    // FUB interest calc
+    const rate = monthDate < fixedEnd ? FUB.fixedRate : Math.max(floatingRate, FUB.floor);
+    const monthlyInterest = fubBal * rate / 12;
+    const basePrincipal = Math.max(0, FUB.monthlyPmt - monthlyInterest);
+    const totalPrincipal = basePrincipal + extraPaydown;
+    const actualPrincipal = Math.min(totalPrincipal, fubBal);
+    const actualExtra = Math.min(extraPaydown, Math.max(0, fubBal - basePrincipal));
+    const totalDs = monthlyInterest + actualPrincipal;
+    const netCf = nrIncome - monthlyInterest - basePrincipal - actualExtra;
+
+    totalNetCf += netCf;
+    totalNrIncome += nrIncome;
+    totalDebtService += totalDs;
+    totalInterest += monthlyInterest;
+
+    rows.push({
+      label: monthLabel,
+      activeCount: activeNotes.length,
+      nrIncome,
+      fubInterest: monthlyInterest,
+      fubPrincipal: basePrincipal,
+      extraPd: actualExtra,
+      totalDs,
+      netCf,
+      fubBal
+    });
+
+    labels.push(monthLabel);
+    netCfData.push(Math.round(netCf));
+    nrIncomeData.push(Math.round(nrIncome));
+    debtServiceData.push(Math.round(-totalDs));
+    fubBalData.push(Math.round(fubBal));
+
+    fubBal = Math.max(0, fubBal - actualPrincipal);
+  }
+
+  // KPIs
+  const avgNetCf = totalNetCf / rows.length;
+  const totalPrincipalPaid = FUB.balanceAsOf - fubBal;
+  document.getElementById('analysisKpi').innerHTML = [
+    {label:'Avg Monthly Net Cash Flow',value:'$'+Math.round(avgNetCf).toLocaleString(),cls:avgNetCf>=0?'green':'red'},
+    {label:'Total N/R Income (Proj.)',value:'$'+Math.round(totalNrIncome/1000).toLocaleString()+'K',cls:'green'},
+    {label:'Total Interest to FUB',value:'$'+Math.round(totalInterest/1000).toLocaleString()+'K',cls:'red'},
+    {label:'FUB Balance at Maturity',value:'$'+Math.round(fubBal).toLocaleString(),cls:fubBal>0?'red':'green'},
+    {label:'Total Principal Paid',value:'$'+Math.round(totalPrincipalPaid/1000).toLocaleString()+'K',cls:'green'}
+  ].map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
+
+  // Net CF chart
+  const cfCtx = document.getElementById('analysisCfChart');
+  if (analysisCfChart) analysisCfChart.destroy();
+  analysisCfChart = new Chart(cfCtx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {label:'N/R Income',data:nrIncomeData,backgroundColor:'rgba(46,204,113,0.7)',stack:'stack'},
+        {label:'Debt Service',data:debtServiceData,backgroundColor:'rgba(231,76,60,0.7)',stack:'stack'},
+        {label:'Net Cash Flow',data:netCfData,type:'line',borderColor:'#c9952b',backgroundColor:'transparent',borderWidth:2,pointRadius:1,tension:0.3}
+      ]
+    },
+    options: {
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8890a4',font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:'#8890a4',font:{size:10},maxRotation:45},grid:{color:'#1e2130'}},
+        y:{ticks:{color:'#8890a4',callback:v=>'$'+Math.round(v/1000)+'K'},grid:{color:'#1e2130'}}
+      }
+    }
+  });
+
+  // Balance chart
+  const balCtx = document.getElementById('analysisBal');
+  if (analysisBalChart) analysisBalChart.destroy();
+  analysisBalChart = new Chart(balCtx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label:'FUB Loan Balance',
+        data:fubBalData,
+        borderColor:'#e74c3c',
+        backgroundColor:'rgba(231,76,60,0.1)',
+        fill:true,
+        borderWidth:2,
+        pointRadius:1,
+        tension:0.3
+      }]
+    },
+    options: {
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8890a4',font:{size:11}}}},
+      scales:{
+        x:{ticks:{color:'#8890a4',font:{size:10},maxRotation:45},grid:{color:'#1e2130'}},
+        y:{ticks:{color:'#8890a4',callback:v=>'$'+(v/1000000).toFixed(1)+'MM'},grid:{color:'#1e2130'}}
+      }
+    }
+  });
+
+  // Table
+  document.getElementById('analysisBody').innerHTML = rows.map((r,i) => {
+    const rateLabel = new Date(2026, 2 + i, 1) < new Date(2027, 3, 18) ? '(fixed ' + (FUB.fixedRate*100).toFixed(2) + '%)' : '(float ' + (Math.max(floatingRate, FUB.floor)*100).toFixed(2) + '%)';
+    return '<tr>'+
+      '<td>'+r.label+' <span style="color:#555;font-size:10px">'+rateLabel+'</span></td>'+
+      '<td class="num">'+r.activeCount+'</td>'+
+      '<td class="num" style="color:#2ecc71">'+fmt(r.nrIncome)+'</td>'+
+      '<td class="num" style="color:#e74c3c">'+fmt(r.fubInterest)+'</td>'+
+      '<td class="num">'+fmt(r.fubPrincipal)+'</td>'+
+      '<td class="num" style="color:#c9952b">'+(r.extraPd>0?fmt(r.extraPd):'-')+'</td>'+
+      '<td class="num" style="color:#e74c3c">'+fmt(r.totalDs)+'</td>'+
+      '<td class="num" style="color:'+(r.netCf>=0?'#2ecc71':'#e74c3c')+';font-weight:600">'+fmt(r.netCf)+'</td>'+
+      '<td class="num">'+fmt(r.fubBal)+'</td>'+
+    '</tr>';
+  }).join('');
+};
+
 // ═══════ INIT ═══════
 async function init() {
   await loadStatuses();
@@ -1590,6 +1792,7 @@ async function init() {
   renderCollections();
   renderInsurance();
   renderCashFlow();
+  window.renderAnalysis();
 }
 init();
 </script>
