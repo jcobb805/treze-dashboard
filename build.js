@@ -1288,7 +1288,7 @@ window.generateLateNotice = function(noteId) {
 
   // Save
   const filename = 'Late Notice - ' + n.address.replace(/[^a-zA-Z0-9 ]/g, '') + '.pdf';
-  window.open(doc.output('bloburl'), '_blank');
+  var a=document.createElement('a');a.href=doc.output('bloburl');a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();document.body.removeChild(a);
   showToast('Late Notice generated: ' + n.address, 'saved', 3000);
 
   // Log action
@@ -1413,7 +1413,7 @@ window.generateDemandLetter = function(noteId) {
   doc.text(LETTERHEAD.signerEntity, 20, y);
 
   const filename = 'Demand Letter - ' + n.address.replace(/[^a-zA-Z0-9 ]/g, '') + '.pdf';
-  window.open(doc.output('bloburl'), '_blank');
+  var a=document.createElement('a');a.href=doc.output('bloburl');a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();document.body.removeChild(a);
   showToast('Demand Letter generated: ' + n.address, 'saved', 3000);
 
   postAPI({ action: 'log_action', updatedBy: getUser(), actionType: 'demand_letter_generated', noteId: n.id, details: 'Arrearage: ' + fmtMoney(totalArrearage) });
