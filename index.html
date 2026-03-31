@@ -998,7 +998,7 @@ function renderCashFlow() {
   }));
 
   // Balloon payoffs by month in 2030
-  const balloon2030=[];
+  const balloon2030raw=[];
   for(let m=0;m<12;m++){
     const d=new Date(2030,m,1);
     const label=d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
@@ -1007,8 +1007,12 @@ function renderCashFlow() {
       const bd=new Date(n.balloonDate);
       if(bd.getFullYear()===2030&&bd.getMonth()===m) amt+=n.currentBalance;
     });
-    balloon2030.push({label,amt});
+    balloon2030raw.push({label,amt});
   }
+  // Trim to only months with payoffs (plus one on each side for context)
+  const firstIdx=balloon2030raw.findIndex(m=>m.amt>0);
+  const lastIdx=balloon2030raw.length-1-[...balloon2030raw].reverse().findIndex(m=>m.amt>0);
+  const balloon2030=balloon2030raw.slice(Math.max(0,firstIdx),lastIdx+1);
   cfCharts.push(new Chart(document.getElementById('balloonMonthChart'),{
     type:'bar',
     data:{labels:balloon2030.map(m=>m.label),datasets:[
