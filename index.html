@@ -238,7 +238,8 @@ textarea.edit-field{resize:vertical;min-height:32px;font-family:inherit}
   <div class="tab-content" id="tab-cashflow">
     <div class="kpi-row" id="cfKpi"></div>
     <div class="chart-row">
-      <div class="chart-card" style="flex:1"><h3>Expected Monthly Collections</h3><div class="chart-wrap"><canvas id="cfChart"></canvas></div></div>
+      <div class="chart-card" style="flex:2"><h3>Monthly Collections</h3><div class="chart-wrap"><canvas id="cfChart"></canvas></div></div>
+      <div class="chart-card" style="flex:1"><h3>Balloon Payoffs (2030)</h3><div class="chart-wrap"><canvas id="balloonMonthChart"></canvas></div></div>
     </div>
     <h3 style="color:#fff;margin-bottom:15px">Upcoming Balloon Maturities</h3>
     <div class="table-wrap">
@@ -991,12 +992,30 @@ function renderCashFlow() {
   cfCharts.push(new Chart(document.getElementById('cfChart'),{
     type:'bar',
     data:{labels:months.map(m=>m.label),datasets:[
-      {label:'Monthly Payments',data:months.map(m=>m.expected),backgroundColor:'#2ecc71',borderRadius:4},
-      {label:'Balloon Payoffs',data:months.map(m=>m.balloon),backgroundColor:'#c9952b',borderRadius:4}
+      {label:'Monthly Payments',data:months.map(m=>m.expected),backgroundColor:'#2ecc71',borderRadius:4}
     ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8890a4'}}},scales:{y:{ticks:{color:'#8890a4',callback:v=>fmtK(v)},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4'},grid:{display:false}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{color:'#8890a4',callback:v=>fmtK(v)},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4',maxRotation:45},grid:{display:false}}}}
   }));
 
+  // Balloon payoffs by month in 2030
+  const balloon2030=[];
+  for(let m=0;m<12;m++){
+    const d=new Date(2030,m,1);
+    const label=d.toLocaleDateString('en-US',{month:'short'});
+    let amt=0;
+    NOTES.forEach(n=>{
+      const bd=new Date(n.balloonDate);
+      if(bd.getFullYear()===2030&&bd.getMonth()===m) amt+=n.currentBalance;
+    });
+    balloon2030.push({label,amt});
+  }
+  cfCharts.push(new Chart(document.getElementById('balloonMonthChart'),{
+    type:'bar',
+    data:{labels:balloon2030.map(m=>m.label),datasets:[
+      {label:'Balloon Payoff',data:balloon2030.map(m=>m.amt),backgroundColor:balloon2030.map(m=>m.amt>0?'#c9952b':'transparent'),borderRadius:4}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw>0?fmt(ctx.raw):''}}},scales:{y:{ticks:{color:'#8890a4',callback:v=>fmtMM(v)},grid:{color:'#2a2d3e'}},x:{ticks:{color:'#8890a4'},grid:{display:false}}}}
+  }));
 
   const sorted=[...NOTES].sort((a,b)=>new Date(a.balloonDate)-new Date(b.balloonDate));
   document.getElementById('balloonBody').innerHTML = sorted.map(n=>{
