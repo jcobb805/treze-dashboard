@@ -1001,7 +1001,7 @@ function renderCashFlow() {
   const balloon2030=[];
   for(let m=0;m<12;m++){
     const d=new Date(2030,m,1);
-    const label=d.toLocaleDateString('en-US',{month:'short'});
+    const label=d.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
     let amt=0;
     NOTES.forEach(n=>{
       const bd=new Date(n.balloonDate);
