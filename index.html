@@ -898,15 +898,15 @@ document.querySelectorAll('#paymentTable th[data-sort]').forEach(th=>{
 // ═══════ COLLECTIONS TAB ═══════
 function renderCollections() {
   const actionNotes = NOTES.filter(n => n.daysPastDue > 0);
-  const lateNotice = actionNotes.filter(n => n.daysPastDue > 0 && n.daysPastDue <= 30);
+  const lateNotice = actionNotes.filter(n => n.daysPastDue >= 15 && n.daysPastDue <= 30);
   const demandLetter = actionNotes.filter(n => n.daysPastDue > 30);
   const totalPastDueBal = actionNotes.reduce((s,n) => s+n.currentBalance, 0);
 
   document.getElementById('collectBadge').textContent = actionNotes.length;
   document.getElementById('collectKpi').innerHTML = [
     {label:'Total Past Due',value:actionNotes.length,cls:actionNotes.length>0?'red':'green'},
-    {label:'Late Notice (1-30 days)',value:lateNotice.length,cls:lateNotice.length>0?'orange':'green'},
-    {label:'Demand Letter (30+ days)',value:demandLetter.length,cls:demandLetter.length>0?'red':'green'},
+    {label:'Late Notice (15-30 days)',value:lateNotice.length,cls:lateNotice.length>0?'orange':'green'},
+    {label:'Demand Letter (30+ days, 30-day cure)',value:demandLetter.length,cls:demandLetter.length>0?'red':'green'},
     {label:'Past Due Balance',value:fmt(totalPastDueBal),cls:'red'}
   ].map(k=>'<div class="kpi"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
 
@@ -920,7 +920,7 @@ function renderCollections() {
       let actionBtns = '';
       if (n.daysPastDue > 30) {
         actionBtns = '<button class="btn btn-red btn-sm" onclick="event.stopPropagation();window.generateDemandLetter(\''+nid+'\')">Demand Letter</button>';
-      } else if (n.daysPastDue > 0) {
+      } else if (n.daysPastDue >= 15) {
         actionBtns = '<button class="btn btn-gold btn-sm" onclick="event.stopPropagation();window.generateLateNotice(\''+nid+'\')">Late Notice</button>';
       }
 
@@ -1223,10 +1223,10 @@ window.generateSelectedLateNotices = function() {
   const checkedIds = getCheckedNoteIds();
   let targets;
   if (checkedIds.length > 0) {
-    targets = NOTES.filter(n => checkedIds.includes(n.id) && n.daysPastDue > 0 && n.daysPastDue <= 30);
+    targets = NOTES.filter(n => checkedIds.includes(n.id) && n.daysPastDue >= 15 && n.daysPastDue <= 30);
     if (targets.length === 0) { showToast('None of the selected notes qualify for late notice (1-30 days past due)', 'error'); return; }
   } else {
-    targets = NOTES.filter(n => n.daysPastDue > 0 && n.daysPastDue <= 30);
+    targets = NOTES.filter(n => n.daysPastDue >= 15 && n.daysPastDue <= 30);
     if (targets.length === 0) { showToast('No notes qualify for late notice', 'error'); return; }
   }
   targets.forEach(n => window.generateLateNotice(n.id));
@@ -1382,7 +1382,7 @@ window.showAmortSchedule = function(id) {
     // Action buttons in panel
     '<div class="btn-group">'+
       (n.daysPastDue > 30 ? '<button class="btn btn-red btn-sm" onclick="window.generateDemandLetter(\''+nid+'\')">Generate Demand Letter</button>' : '')+
-      (n.daysPastDue > 0 && n.daysPastDue <= 30 ? '<button class="btn btn-gold btn-sm" onclick="window.generateLateNotice(\''+nid+'\')">Generate Late Notice</button>' : '')+
+      (n.daysPastDue >= 15 && n.daysPastDue <= 30 ? '<button class="btn btn-gold btn-sm" onclick="window.generateLateNotice(\''+nid+'\')">Generate Late Notice</button>' : '')+
     '</div>'+
 
     '<div class="detail-grid">'+
