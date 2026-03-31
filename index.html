@@ -648,13 +648,19 @@ window.generateLateNotice = function(noteId) {
   doc.text(letterDateLong, 190, y, { align: 'right' });
   y += 14;
 
-  // Recipient
-  const recipientName = n.ownerName || n.contact || n.borrower;
-  const recipientCompany = n.borrower !== recipientName ? n.borrower : '';
-  if (recipientCompany) { doc.text(recipientCompany, 20, y); y += 5; }
-  doc.text('Attn: ' + recipientName, 20, y); y += 5;
+  // Recipient — show borrower entity, then Attn only if contact is a distinct person
+  const contactPerson = n.ownerName || n.contact || '';
+  const borrowerNorm = n.borrower.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const contactNorm = contactPerson.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const hasDistinctContact = contactPerson && contactNorm !== borrowerNorm;
+  doc.text(n.borrower, 20, y); y += 5;
+  if (hasDistinctContact) { doc.text('Attn: ' + contactPerson, 20, y); y += 5; }
   if (n.mailingAddress) {
-    const addrLines = n.mailingAddress.split(',').map(s => s.trim());
+    const addrParts = n.mailingAddress.split(',').map(s => s.trim());
+    // Keep city + state/zip on one line (last two parts)
+    const addrLines = addrParts.length >= 3
+      ? [addrParts.slice(0, -2).join(', '), addrParts.slice(-2).join(', ')]
+      : addrParts;
     addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
   }
   y += 5;
@@ -664,8 +670,8 @@ window.generateLateNotice = function(noteId) {
   y += 10;
 
   // Salutation
-  const saluteName = recipientName.split(' ').pop();
-  doc.text('Dear ' + recipientName + ',', 20, y);
+  const saluteName = (contactPerson || n.borrower);
+  doc.text('Dear ' + saluteName + ',', 20, y);
   y += 10;
 
   // Body
@@ -735,13 +741,19 @@ window.generateDemandLetter = function(noteId) {
   doc.text(todayLong, 190, y, { align: 'right' });
   y += 12;
 
-  // Recipient
-  const recipientName = n.ownerName || n.contact || n.borrower;
-  const recipientCompany = n.borrower !== recipientName ? n.borrower : '';
-  if (recipientCompany) { doc.text(recipientCompany, 20, y); y += 5; }
-  doc.text('Attn: ' + recipientName, 20, y); y += 5;
+  // Recipient — show borrower entity, then Attn only if contact is a distinct person
+  const contactPerson = n.ownerName || n.contact || '';
+  const borrowerNorm = n.borrower.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const contactNorm = contactPerson.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const hasDistinctContact = contactPerson && contactNorm !== borrowerNorm;
+  doc.text(n.borrower, 20, y); y += 5;
+  if (hasDistinctContact) { doc.text('Attn: ' + contactPerson, 20, y); y += 5; }
   if (n.mailingAddress) {
-    const addrLines = n.mailingAddress.split(',').map(s => s.trim());
+    const addrParts = n.mailingAddress.split(',').map(s => s.trim());
+    // Keep city + state/zip on one line (last two parts)
+    const addrLines = addrParts.length >= 3
+      ? [addrParts.slice(0, -2).join(', '), addrParts.slice(-2).join(', ')]
+      : addrParts;
     addrLines.forEach(line => { doc.text(line, 20, y); y += 5; });
   }
   y += 3;
@@ -759,7 +771,8 @@ window.generateDemandLetter = function(noteId) {
   y += 8;
 
   // Body
-  doc.text('Dear ' + recipientName + ',', 20, y);
+  const saluteName = (contactPerson || n.borrower);
+  doc.text('Dear ' + saluteName + ',', 20, y);
   y += 7;
 
   const noteDate = fmtDateLong(n.beginDate);
