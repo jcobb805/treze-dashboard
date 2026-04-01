@@ -940,7 +940,7 @@ function renderInsurance() {
     {label:'Expiring Soon',value:expiring,cls:'yellow',filter:'expiring'},
     {label:'Lapsed',value:lapsed,cls:lapsed>0?'red':'green',filter:'lapsed'},
     {label:'Unknown',value:unknown,cls:unknown>0?'orange':'',filter:'unknown'}
-  ].map(k=>'<div class="kpi" style="cursor:pointer" onclick="document.getElementById('filterInsStatus').value=''+k.filter+'';renderInsurance()"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
+  ].map(k=>'<div class="kpi" style="cursor:pointer" onclick="document.getElementById(\x27filterInsStatus\x27).value=\x27'+k.filter+'\x27;renderInsurance()"><div class="label">'+k.label+'</div><div class="value '+k.cls+'">'+k.value+'</div></div>').join('');
 
   const filterVal=document.getElementById('filterInsStatus').value;
   const filtered=filterVal==='all'?statuses:statuses.filter(s=>s.ins.status===filterVal);
